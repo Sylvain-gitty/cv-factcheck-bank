@@ -1,0 +1,58 @@
+# entities.example.yaml — copy to entities.yaml and edit.
+#
+# An entity is a THING YOU DID over a period: a job, a project, a degree.
+# It carries the dates, the organisation, and the authorship truth. Facts attach to it.
+#
+# Why separate from facts: a CV renders entities in reverse-chronological order and hangs
+# selected bullets under each, while retrieval works on individual claims. Keeping them
+# apart means dates and authorship live in exactly one place and cannot drift.
+#
+# authorship is inherited by every fact on the entity and caps the verbs those facts may
+# use. On co-authored or team work, each fact must also declare `contribution`.
+
+entities:
+
+  - id: ent-ranker
+    kind: project
+    name: Document relevance ranker
+    org: MSc capstone
+    role: Data Scientist, 1 of 2      # rendered in the header, so shared work is visible
+    start: 2025-03
+    end: 2025-05
+    authorship: co-authored
+    collaborators: ["J. Okonkwo"]
+    url: https://github.com/alexbeaumont/relevance-ranker
+    territory: null
+    summary: >
+      Ranking model over a labelled document corpus, built with one collaborator.
+    publishable: true
+
+  - id: ent-datacorp
+    kind: role
+    name: Data Analyst
+    org: DataCorp GmbH, Berlin
+    role: Data Analyst
+    start: 2022-01
+    end: 2024-12
+    authorship: sole
+    collaborators: []
+    url: null
+    territory: null
+    summary: >
+      Reporting and analysis for a commercial operations team.
+    publishable: false
+
+  - id: ent-msc
+    kind: education
+    name: MSc Statistics
+    org: Example University
+    role: MSc candidate
+    start: 2020-09
+    end: 2022-06
+    authorship: sole
+    collaborators: []
+    url: null
+    territory: null
+    summary: >
+      Applied statistics, experimental design, computational methods.
+    publishable: true

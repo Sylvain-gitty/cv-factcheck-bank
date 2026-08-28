@@ -1,0 +1,38 @@
+# A job input file. In production, Plan 01 Stage 1 writes these automatically and
+# Stage 2c fills in `requirements` from its structured extraction.
+#
+# Until then, paste a posting in by hand. If you leave `requirements` out, tailor.py
+# extracts them heuristically from `description` (bullets first, then sentences).
+
+title: Data Scientist (m/w/d) — Machine Learning
+company: Beispiel GmbH
+location: Berlin, hybrid
+url: https://example.com/jobs/12345
+source: manual
+language: en
+posted: 2026-08-20
+
+# Optional. Leave empty to let tailor.py extract from the description.
+requirements:
+  - Design, train and evaluate supervised machine learning models on real-world data
+  - Strong grounding in statistics, hypothesis testing and experimental design
+  - Experience with scikit-learn and gradient boosting libraries such as XGBoost or CatBoost
+  - Rigorous approach to model validation, cross-validation and avoiding data leakage
+  - Comfortable with Python, pandas and SQL in a production codebase
+  - Work with imbalanced datasets where the positive class is rare
+  - Communicate findings clearly to non-technical stakeholders
+  - Experience with NLP, embeddings or information retrieval is a plus
+  - Git, code review and reproducible workflows
+
+description: |
+  We are looking for a Data Scientist to join our applied ML team in Berlin.
+
+  You will own model development end to end: framing the problem, building features,
+  training and validating models, and explaining the result to people who will act on it.
+  We care more about whether a result holds up than about the headline number.
+
+  Our stack is Python, pandas, scikit-learn, PostgreSQL and Docker, with experiments
+  tracked in Git. Some of our problems involve ranking and text similarity, so exposure
+  to embeddings or information retrieval is welcome but not required.
+
+  German is helpful but the working language of the team is English.

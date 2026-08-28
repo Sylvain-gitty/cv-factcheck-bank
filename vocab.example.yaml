@@ -1,0 +1,241 @@
+# vocab.example.yaml — copy to vocab.yaml and edit.
+#
+#     cp vocab.example.yaml vocab.yaml
+#
+# The controlled vocabulary for skill tags.
+#
+# WHY THIS FILE EXISTS
+# Free-text tags drift. Within a month you will have "sklearn", "scikit-learn" and
+# "Scikit-Learn" as three different tags, and your Stage 3 retrieval will silently return
+# two thirds of the facts it should. Nothing errors. The CV is just quietly worse.
+#
+# This is the most common and least visible data-quality failure in small hand-built
+# datasets, and the fix is boring: one canonical id per concept, aliases mapped to it,
+# a validator that rejects anything unlisted.
+#
+# Rule: adding a skill is a deliberate act. If validate.py rejects a tag, either fix the
+# tag or add the skill here on purpose. Never "just allow unknown tags".
+#
+# Optional per skill: `cv_claimed: true` marks a skill your CV asserts. validate.py then
+# reports any such skill with no fact behind it -- each one is a question you could be
+# asked and could not answer with a story. Left unset here; set it on your own copy.
+
+skills:
+  # --- languages & core tooling -------------------------------------------------
+  - id: python
+    label: Python
+    group: core
+    aliases: [py, python3]
+  - id: sql
+    label: SQL
+    group: core
+    aliases: [postgresql, postgres-sql]
+  - id: bash
+    label: Bash / shell
+    group: core
+    aliases: [shell, command-line, cli]
+  - id: git
+    label: Git
+    group: core
+    aliases: [version-control, github]
+
+  # --- data ---------------------------------------------------------------------
+  - id: pandas
+    label: pandas
+    group: data
+    aliases: [numpy, pandas-numpy]
+  - id: eda
+    label: Exploratory data analysis
+    group: data
+    aliases: [exploratory-data-analysis, data-exploration]
+  - id: data-cleaning
+    label: Data cleaning
+    group: data
+    aliases: [data-wrangling, preprocessing]
+  - id: feature-engineering
+    label: Feature engineering
+    group: data
+    aliases: [feature-eng]
+  - id: data-viz
+    label: Data visualisation
+    group: data
+    aliases: [visualisation, matplotlib, seaborn, plotting]
+
+  # --- modelling ----------------------------------------------------------------
+  - id: scikit-learn
+    label: scikit-learn
+    group: modelling
+    aliases: [sklearn, scikit]
+  - id: regression
+    label: Regression modelling
+    group: modelling
+    aliases: [linear-regression, logistic-regression, predictive-regression]
+  - id: tree-ensembles
+    label: Tree ensembles
+    group: modelling
+    aliases: [random-forest, xgboost, catboost, adaboost, gradient-boosting]
+  - id: stacking
+    label: Model stacking / ensembling
+    group: modelling
+    aliases: [ensemble, meta-learner, stacked-ensemble]
+  - id: neural-networks
+    label: Neural networks
+    group: modelling
+    aliases: [ann, deep-learning]
+  - id: time-series
+    label: Time series
+    group: modelling
+    aliases: [timeseries, forecasting]
+  - id: imbalanced-data
+    label: Imbalanced classification
+    group: modelling
+    aliases: [class-imbalance, rare-event, low-prevalence]
+
+  # --- evaluation & statistics (your strongest cluster — keep it granular) -------
+  - id: model-evaluation
+    label: Model evaluation
+    group: evaluation
+    aliases: [evaluation, metrics, roc-auc, f2]
+  - id: cross-validation
+    label: Cross-validation
+    group: evaluation
+    aliases: [groupkfold, logo, leave-one-group-out, grouped-k-fold]
+  - id: experimental-design
+    label: Experimental design
+    group: evaluation
+    aliases: [validation-design, study-design]
+  - id: statistical-testing
+    label: Statistical testing
+    group: evaluation
+    aliases: [hypothesis-testing, bootstrap, significance-testing, paired-bootstrap]
+  - id: threshold-tuning
+    label: Decision-threshold tuning
+    group: evaluation
+    aliases: [threshold-selection, operating-point]
+  - id: benchmarking
+    label: Benchmarking
+    group: evaluation
+    aliases: [external-validation, holdout-design]
+
+  # --- NLP / LLM ----------------------------------------------------------------
+  - id: nlp
+    label: NLP
+    group: ai
+    aliases: [natural-language-processing, text-mining]
+  - id: embeddings
+    label: Embeddings & semantic search
+    group: ai
+    aliases: [vector-search, sentence-embeddings, cosine-similarity, pgvector]
+  - id: rag
+    label: Retrieval-augmented generation
+    group: ai
+    aliases: [retrieval-augmented-generation, langchain, faiss]
+  - id: prompt-engineering
+    label: Prompt engineering
+    group: ai
+    aliases: [prompting, system-prompts]
+  - id: llm-evaluation
+    label: LLM evaluation
+    group: ai
+    aliases: [llm-benchmarking, model-comparison]
+  - id: ranking
+    label: Ranking & relevance
+    group: ai
+    aliases: [relevance-ranking, information-retrieval, screening]
+
+  # --- engineering & product ----------------------------------------------------
+  - id: fastapi
+    label: FastAPI
+    group: engineering
+    aliases: [api-development, rest-api]
+  - id: react
+    label: React
+    group: engineering
+    aliases: [mantine, spa, frontend]
+  - id: postgres
+    label: PostgreSQL
+    group: engineering
+    aliases: [postgresql-db, database-design]
+  - id: docker
+    label: Docker
+    group: engineering
+    aliases: [containers, docker-compose]
+  - id: ci-cd
+    label: CI/CD
+    group: engineering
+    aliases: [github-actions, continuous-integration, automated-testing]
+  - id: testing
+    label: Testing
+    group: engineering
+    aliases: [pytest, playwright, e2e-testing, smoke-tests]
+  - id: streamlit
+    label: Streamlit
+    group: engineering
+    aliases: [dashboards]
+  - id: workflow-automation
+    label: Workflow automation
+    group: engineering
+    aliases: [n8n, pipelines, orchestration]
+
+  # --- added from the Lebenslauf ------------------------------------------------
+  - id: r-lang
+    label: R
+    group: core
+    aliases: [rstats, r-statistics]
+  - id: tensorflow
+    label: TensorFlow
+    group: modelling
+    aliases: [keras]
+    # CLAIMED ON YOUR CV. Confirm you can defend it under questioning, or move it to
+    # profile.yaml's deny_list. A named framework invites a framework question.
+  - id: clustering
+    label: Clustering
+    group: modelling
+    aliases: [unsupervised-learning, kmeans]
+  - id: hyperparameter-tuning
+    label: Hyperparameter tuning
+    group: modelling
+    aliases: [gridsearch, hyperparameter-optimisation]
+  - id: cloud-deployment
+    label: Cloud deployment
+    group: engineering
+    aliases: [cloud, deployment]
+    # CV says "Grundlagen" (basics). Keep the fact honest about the level.
+  - id: jupyter
+    label: Jupyter / reproducible workflows
+    group: core
+    aliases: [notebooks, reproducibility]
+  - id: population-genetics
+    label: Population and community genetics
+    group: evaluation
+    aliases: [allele-frequency, genetic-drift, evolutionary-modelling]
+
+  # --- ways of working ----------------------------------------------------------
+  - id: team-leadership
+    label: Team leadership
+    group: working
+    aliases: [people-management, teamfuehrung, leading-teams]
+  - id: project-coordination
+    label: Project coordination
+    group: working
+    aliases: [project-management, logistics, scheduling, projektleitung]
+  - id: process-improvement
+    label: Process improvement
+    group: working
+    aliases: [operations, efficiency, prozessoptimierung]
+  - id: product-thinking
+    label: Product thinking
+    group: working
+    aliases: [product-management, scoping, roadmapping, prioritisation]
+  - id: technical-writing
+    label: Technical writing
+    group: working
+    aliases: [documentation, decision-records, whitepaper]
+  - id: stakeholder-communication
+    label: Stakeholder communication
+    group: working
+    aliases: [presenting, comms]
+  - id: collaboration
+    label: Team collaboration
+    group: working
+    aliases: [teamwork, pairing, code-review]

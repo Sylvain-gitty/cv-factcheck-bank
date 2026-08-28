@@ -1,0 +1,158 @@
+# facts.example.yaml — copy to facts.yaml and edit.
+#
+# ONE FACT = ONE CLAIM. If a bullet joins two verbs with "and", it is probably two facts.
+# Atomic facts matter for retrieval: a fact bundling three achievements matches every
+# requirement weakly and none strongly.
+#
+# FIELDS
+#   id            stable, kebab-case. CV bullets cite it for traceability. Never reuse.
+#   entity        FK into entities.yaml
+#   type          achievement | insight | artifact | responsibility | metric
+#   claim         written for RETRIEVAL: self-contained, unambiguous, ~300 chars
+#   claim_short   the same truth at ~140 chars, for the CV bullet
+#   outcome       what CHANGED because of it
+#   outcome_short the same at ~70 chars. ALWAYS appended to the bullet -- the outcome is
+#                 the half that makes a bullet land, so it is never silently dropped.
+#   evidence      a path, a URL, or "interview-defensible"
+#   metrics       structured numbers, so nothing downstream retypes them from memory
+#   skills        vocab.yaml ids only. The CV's skills section is DERIVED from these, so
+#                 it cannot contain a skill no rendered bullet supports.
+#   archetypes    which role targets this serves
+#   strength      1 weak / 2 solid / 3 lead-with-this
+#   status        draft | confirmed  -- nothing renders until confirmed
+#   contribution  led | joint | supported, on shared work. 'supported' NEVER renders to a
+#                 CV: you do not put a teammate's work on your CV.
+#   scope         created | operated | contributed. When operated/contributed, the
+#                 validator rejects creator verbs like "redesigned" or "rebuilt".
+
+facts:
+
+  - id: f-ranker-baseline
+    entity: ent-ranker
+    type: insight
+    claim: >
+      Established that a zero-parameter cosine-similarity baseline outperformed the first
+      supervised model on held-out documents, and used it as the bar any later model had
+      to clear.
+    claim_short: "Established a zero-parameter cosine baseline that outperformed the first supervised model on held-out documents."
+    outcome: >
+      Prevented the team from shipping a model that was worse than doing nothing, and
+      grounded every later comparison in a real reference point.
+    outcome_short: "Stopped a model shipping that was worse than doing nothing."
+    contribution: led
+    evidence: https://github.com/alexbeaumont/relevance-ranker
+    metrics:
+      - {name: baseline_roc_auc, value: 0.69}
+      - {name: supervised_roc_auc, value: 0.61}
+    skills: [benchmarking, model-evaluation, embeddings]
+    archetypes: [data-scientist]
+    strength: 3
+    status: confirmed
+    publishable: true
+    confidential: false
+    interview_hook: >
+      "When is the right call to ship no model?" A good answer here separates you from
+      candidates who only know how to add complexity.
+
+  - id: f-ranker-significance
+    entity: ent-ranker
+    type: insight
+    claim: >
+      Backed every model comparison with a paired bootstrap test on the holdout, and
+      declined to report one apparent improvement because its confidence interval crossed
+      zero.
+    claim_short: "Backed every model comparison with paired bootstrap tests, declining to report a gain the intervals did not support."
+    outcome: >
+      Kept the reported results defensible under review.
+    outcome_short: "Kept every reported result defensible under review."
+    contribution: joint
+    evidence: https://github.com/alexbeaumont/relevance-ranker
+    metrics:
+      - {name: rejected_delta, value: 0.005, context: "p=0.60, interval crossed zero"}
+    skills: [statistical-testing, model-evaluation]
+    archetypes: [data-scientist, technical-pm]
+    strength: 3
+    status: confirmed
+    publishable: true
+    confidential: false
+
+  - id: f-ranker-features
+    entity: ent-ranker
+    type: metric
+    claim: >
+      Diagnosed that the document embeddings encoded topic rather than relevance, by
+      recovering the source topic from the embedding alone at high accuracy against a low
+      majority-class baseline.
+    claim_short: "Diagnosed embeddings as encoding topic rather than relevance, recoverable from the embedding alone."
+    outcome: >
+      Explained why the model failed to transfer across topics.
+    outcome_short: "Explained why the model failed to transfer across topics."
+    contribution: supported      # collaborator's work -- kept for context, never rendered
+    evidence: https://github.com/alexbeaumont/relevance-ranker
+    metrics: []
+    skills: [embeddings, model-evaluation]
+    archetypes: [data-scientist]
+    strength: 3
+    status: confirmed
+    publishable: true
+    confidential: false
+
+  - id: f-datacorp-reporting
+    entity: ent-datacorp
+    type: achievement
+    claim: >
+      Rebuilt the weekly commercial reporting pipeline in Python and SQL, replacing a
+      manual spreadsheet process that three people maintained by hand.
+    claim_short: "Rebuilt the weekly commercial reporting pipeline in Python and SQL, replacing a manual spreadsheet process."
+    outcome: >
+      Cut the reporting cycle from two days to under an hour and removed the recurring
+      transcription errors it had been producing.
+    outcome_short: "Cut the reporting cycle from two days to under an hour."
+    evidence: interview-defensible
+    metrics:
+      - {name: cycle_hours_before, value: 16}
+      - {name: cycle_hours_after, value: 1}
+    skills: [python, sql, pandas, data-cleaning]
+    archetypes: [data-scientist, technical-pm]
+    strength: 3
+    status: confirmed
+    publishable: false
+    confidential: false
+
+  - id: f-datacorp-dashboards
+    entity: ent-datacorp
+    type: responsibility
+    claim: >
+      Ran the operational reporting stack that the commercial team depended on, working
+      within a data model and toolchain that predated the role.
+    claim_short: "Ran the operational reporting stack the commercial team depended on, within a data model that predated the role."
+    outcome: >
+      Held reporting to its existing standard across three years without the process
+      degrading.
+    outcome_short: "Held reporting to its standard across three years."
+    scope: operated              # you ran it; you did not create it
+    evidence: interview-defensible
+    metrics: []
+    skills: [sql, stakeholder-communication]
+    archetypes: [technical-pm]
+    strength: 2
+    status: confirmed
+    publishable: false
+    confidential: false
+
+  - id: f-msc-experimental-design
+    entity: ent-msc
+    type: achievement
+    claim: >
+      Designed and analysed controlled experiments as the core of a research master's,
+      covering power analysis, hypothesis testing and regression.
+    claim_short: "Designed and analysed controlled experiments through a research master's: power analysis, hypothesis testing, regression."
+    outcome: null
+    evidence: interview-defensible
+    metrics: []
+    skills: [experimental-design, statistical-testing, regression]
+    archetypes: [data-scientist]
+    strength: 2
+    status: confirmed
+    publishable: true
+    confidential: false

@@ -1,0 +1,80 @@
+# profile.example.yaml — copy to profile.yaml and edit.
+#
+#     cp profile.example.yaml profile.yaml
+#
+# Everything here is fictional. Your real profile.yaml is gitignored.
+
+owner:
+  name: Alex Beaumont
+  headline_en: "Data Scientist | Evaluation and applied ML"
+  headline_de: null
+  phone: "+00 000 0000000"
+  email: alex@example.com
+  github: alexbeaumont
+  linkedin: linkedin.com/in/alexbeaumont
+  site: null
+  location: Berlin, Germany
+  work_authorization: eu-citizen
+  languages:
+    - {lang: english, level: native,       level_de: Muttersprache}
+    - {lang: german,  level: professional, level_de: Verhandlungssicher}
+  application_languages: [en]
+
+
+# Role archetypes. Every fact is tagged with the ones it serves, and each archetype has
+# TWO texts because they are read by different things:
+#
+#   profile      read by a HUMAN. Opens the CV. Prose. Makes someone keep reading.
+#   match_text   read by a MACHINE. Embedded and scored against job descriptions. Wants
+#                the literal vocabulary of the postings you want to match. Reads badly,
+#                and is never shown to anyone.
+#
+# One text for both jobs gives a keyword-stuffed CV opener AND a weak matcher.
+archetypes:
+  - id: data-scientist
+    label: Data Scientist / ML Engineer
+    profile: >
+      Data scientist working on applied machine learning, with a background in quantitative
+      research. What I am best at is establishing whether a result is real before anyone
+      builds on it.
+    match_text: >
+      Data scientist, machine learning engineer. Supervised learning, classification,
+      regression, ranking. Model evaluation, cross-validation, ROC-AUC, statistical
+      testing, experimental design. Python, pandas, scikit-learn, SQL, Git.
+
+  - id: technical-pm
+    label: Technical Product Manager
+    profile: >
+      Product-minded, with a technical background and experience leading delivery teams.
+      I can assess a claim about a model rather than take it on trust.
+    match_text: >
+      Technical product manager, product owner. Product strategy, roadmap, scoping,
+      prioritisation, stakeholder management, cross-functional coordination, team
+      leadership, process improvement, metrics definition.
+
+
+territories: []
+
+
+# ---------------------------------------------------------------------------
+# HARD GUARDRAILS
+# ---------------------------------------------------------------------------
+# Terms that must NEVER appear in a rendered CV. validate.py fails the build if a
+# confirmed fact contains one, and render.py re-checks before producing a document.
+# Add every technology a recruiter might expect but you cannot defend in an interview.
+deny_list:
+  terms:
+    - Kubernetes
+    - "years of experience"
+    - "expert in"
+    - "passionate about"
+
+# Verbs FORBIDDEN at each authorship level.
+#
+# An allow-list of permitted verbs would fight you constantly and get switched off. A
+# deny-list of credit-claiming verbs fires rarely and catches the failure that actually
+# matters: quietly taking sole credit for team work.
+forbidden_verbs:
+  sole: []
+  co-authored: [led, owned, single-handedly, solely]
+  team: [led, owned, architected, drove, single-handedly, solely]

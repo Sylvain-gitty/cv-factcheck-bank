@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# YOUR DATA NEVER GOES PUBLIC.
+#
+# This repo is the tooling. The fact bank it operates on contains your phone
+# number, your email, your full employment history and your rendered CVs.
+# Keep those local, or in a separate private repo.
+#
+# If you ever need to share a bank, share the .example.yaml files instead.
+# ---------------------------------------------------------------------------
+profile.yaml
+entities.yaml
+facts.yaml
+vocab.yaml
+confirm.txt
+NOTES.private.md
+
+# Rendered output: CVs, traces, check reports
+out/
+
+# Real job postings you are applying to
+jobs/*.yaml
+!jobs/example-*.yaml
+
+# LLM selector artefacts
+llm_selection.json
+prompt.txt
+
+__pycache__/
+*.pyc
+.venv/

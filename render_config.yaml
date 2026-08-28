@@ -1,0 +1,113 @@
+# render_config.yaml — the CV variants.
+#
+# Each variant is a SELECTION POLICY, not a document. The renderer is deterministic and
+# does no writing: it filters, orders, caps and formats. Nothing here generates prose.
+#
+# That separation is deliberate. Later, Plan 01 Stage 3 puts an LLM in charge of the
+# selection decisions per job — but it still hands them to this same renderer. Content
+# decisions and document production stay apart, so a bad prompt can never produce a
+# broken document, and a template change can never alter a claim.
+
+# WHY EVERY REAL VARIANT TARGETS TWO PAGES
+#
+# A one-page CV was measured and found impossible to do honestly here. Three degrees, three
+# roles and three projects cost roughly 0.48 of a page in entity headings alone, before a
+# single bullet. Fitting one page would mean deleting either the projects -- the entire
+# point of rebuilding this CV -- or the work history.
+#
+# Two pages is also the German Lebenslauf norm, and full education detail is expected here.
+# The rule that matters is not "one page", it is: never spill a little onto a second sheet.
+# Land between 1.8 and 2.0, or cut to a genuine single page. 1.4 is the bad number.
+defaults:
+  language: en                  # en | de
+  page_target: 1                # soft budget; the renderer warns when you blow it
+  max_facts_per_entity: 3
+  max_total_facts: 18
+  min_strength: 1               # drop facts weaker than this
+  include_drafts: false         # NEVER true for anything you send
+  # Section order is a product decision, not a formatting one — see README.
+  sections: [profile, skills, projects, experience, education, languages]
+
+variants:
+
+  # The reference document. Never sent. Everything you have, so you can see the whole
+  # inventory in one place and choose from it.
+  - id: master
+    label: Master reference (all facts)
+    archetype: null             # null = no archetype filter
+    page_target: 3
+    max_facts_per_entity: 99
+    max_total_facts: 999
+    sections: [profile, skills, projects, experience, education, languages]
+
+  # Projects lead. Your strongest evidence is the modelling work, and it is currently
+  # absent from the CV entirely.
+  - id: ds
+    label: Data Scientist / ML Engineer
+    archetype: data-scientist
+    page_target: 2
+    max_total_facts: 10
+    sections: [profile, skills, projects, experience, education, languages]
+
+  - id: ai
+    label: AI / LLM Engineer
+    archetype: ai-engineer
+    page_target: 2
+    max_total_facts: 10
+    sections: [profile, skills, projects, experience, education, languages]
+
+  # Experience leads here, and that is the whole point of this variant. Leading teams of
+  # 10-25 and redesigning operational processes is the evidence a PM hiring manager wants
+  # first; the modelling work is the differentiator that follows it, not the opener.
+  - id: pm
+    label: Technical Product Manager
+    archetype: technical-pm
+    page_target: 2
+    max_total_facts: 9
+    sections: [profile, skills, experience, projects, education, languages]
+
+  # German-language version of the DS variant. Uses claim_de where present and reports
+  # every fact that falls back to English so you can spot the gaps.
+  - id: ds-de
+    label: Data Scientist (Deutsch)
+    archetype: data-scientist
+    language: de
+    page_target: 2
+    max_total_facts: 9
+    sections: [profile, skills, projects, experience, education, languages]
+
+
+# Display labels for the section headings, per language.
+section_labels:
+  en:
+    profile: Profile
+    skills: Technical Skills
+    projects: Projects
+    experience: Professional and Research Experience
+    education: Education
+    languages: Languages
+  de:
+    profile: Profil
+    skills: Technische Kenntnisse
+    projects: Projekte
+    experience: Berufs- und Forschungserfahrung
+    education: Ausbildung
+    languages: Sprachen
+
+skill_group_labels:
+  en:
+    core: Programming
+    data: Data handling
+    modelling: Machine learning
+    evaluation: Statistics and evaluation
+    ai: NLP and LLM systems
+    engineering: Engineering and tooling
+    working: Ways of working
+  de:
+    core: Programmierung
+    data: Datenverarbeitung
+    modelling: Machine Learning
+    evaluation: Statistik und Modellvalidierung
+    ai: NLP und LLM-Systeme
+    engineering: Engineering und Tools
+    working: Arbeitsweise
