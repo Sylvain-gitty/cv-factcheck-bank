@@ -491,10 +491,18 @@ def to_pdf(html_path: Path, pdf_path: Path) -> bool:
     exe = next((b for b in BROWSERS if Path(b).exists()), None)
     if not exe:
         return False
+    import time
+    before = pdf_path.stat().st_mtime if pdf_path.exists() else 0
     subprocess.run([exe, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
                     f"--print-to-pdf={pdf_path}", html_path.resolve().as_uri()],
                    capture_output=True, timeout=120)
-    return pdf_path.exists()
+    # Headless Chrome/Edge returns before the file is flushed to disk, so exists() races
+    # it and a caller that copies the result gets nothing. Poll until it lands.
+    for _ in range(40):
+        if pdf_path.exists() and pdf_path.stat().st_size > 0                 and pdf_path.stat().st_mtime > before:
+            return True
+        time.sleep(0.25)
+    return pdf_path.exists() and pdf_path.stat().st_size > 0
 
 
 def page_estimate(bank, sel, cfg) -> float:

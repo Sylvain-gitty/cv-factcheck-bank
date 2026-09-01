@@ -1,0 +1,54 @@
+# answers.example.yaml — copy to answers.yaml and fill in.
+#
+# The controlled the screening-question answer bank.
+#
+# Every portal asks the same six or seven things, and you retype them every time. Write
+# each answer once, well, and paste it. Answers you have thought about beforehand are
+# better than answers you improvise at 11pm with the form already open.
+#
+# `null` means UNANSWERED, and package.py flags it rather than inventing something. The
+# salary field in particular is left blank on purpose: a number invented on your behalf is
+# a number you would have to defend.
+
+answers:
+  - id: notice_period
+    question: Notice period / earliest start date
+    answer: null        # TODO — e.g. "Available immediately" or "Four weeks"
+
+  - id: salary_expectation
+    question: Salary expectation
+    answer: null
+    # TODO. Research the band for the role in Berlin before writing anything here, and
+    # give a range with a reason attached rather than a single number. This is the one
+    # answer that costs real money if you write it carelessly, which is exactly why it is
+    # not generated for you.
+
+  - id: work_authorization
+    question: Work authorization / visa status
+    answer: null        # TODO — confirm and state it plainly; it removes a recruiter worry
+
+  - id: location
+    question: Location and willingness to relocate / commute
+    answer: null        # TODO — Berlin-based; say what you will and will not do
+
+  - id: why_us
+    question: Why this company?
+    answer: PER_JOB     # never a stored answer -- see the note in package.py
+
+  - id: languages
+    question: Language proficiency
+    answer: >
+      TODO
+
+  - id: heard_about
+    question: How did you hear about us?
+    answer: null        # TODO — usually the honest answer is the job board; say which
+
+  - id: portfolio
+    question: Portfolio / GitHub / personal site
+    answer: >
+      github.com/<you>
+
+  - id: remote_preference
+    question: Remote / hybrid / on-site preference
+    answer: null        # TODO

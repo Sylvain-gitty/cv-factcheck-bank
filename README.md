@@ -17,7 +17,8 @@ python discover.py                    # fetch jobs -> jobs/*.yaml
 python rank.py --llm                  # score + re-rank -> out/digest.md
 python tailor.py jobs/<slug>.yaml --explain
 python letter.py jobs/<slug>.yaml     # draft -> you write the opening -> render
-python track.py --add <slug>          # log it; python track.py for the report
+python package.py <slug>              # assemble; you submit
+python track.py                       # the report
 ```
 
 PyYAML is the only dependency. No LaTeX, no headless browser, no API key, no build step.
@@ -287,6 +288,26 @@ Tested against a deliberately generic opening — *"I am writing to apply… 12 
 experience delivering value"* — five gates fired at once, including the fabricated `12`
 and the deny-listed phrase carrying it.
 
+## Assembling an application
+
+`package.py <slug>` gathers the tailored CV, the rendered letter, a submission checklist
+with your screening answers filled in, and a two-date follow-up `.ics` — into one folder.
+
+**It refuses to assemble while any gate is failing**, and it reports which: no tailored CV
+yet, the letter opening still unwritten, a fatal letter check outstanding.
+
+**There is no `--submit` flag and there will not be one.** Automated submission breaks most
+platforms' terms and risks the account you are searching with; a wrong-company letter cannot
+be recalled; portal logins and CAPTCHAs are not things to automate on someone's behalf; and
+"why us?" is answered by a person or answered badly. What this stage removes is the twenty
+minutes of assembly around the submission, not the submission.
+
+`answers.yaml` holds the screening answers you retype on every portal. Write each once.
+Two are deliberately not generated: **"why us?"** is marked `PER_JOB`, because a stored
+answer to it is the generic-letter problem wearing a different hat, and **salary
+expectation** is left blank, because a number invented on your behalf is a number you would
+have to defend.
+
 ## Tracking outcomes
 
 `track.py` keeps `applications.csv` — open it in a spreadsheet and edit the outcome columns
@@ -397,6 +418,8 @@ validate.py         integrity, guardrails, coverage report
 render.py           bank -> HTML / Markdown / traceability
 tailor.py           tailor to one job posting, with checks
 letter.py           motivation letter: evidence, draft, gates, render
+package.py          assemble a ready-to-send application; refuses to send it
+answers.yaml        screening-question answer bank
 track.py            application log, funnel, response rates with intervals
 confirm.py          the draft -> confirmed human gate
 ```
