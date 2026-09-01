@@ -131,6 +131,28 @@ Over-filtering costs more than it looks: a job wrongly dropped never appears, so
 learn it was dropped. Under-filtering shows up in the digest and costs thirty seconds.
 **When the two errors are that asymmetric, bias toward letting things through.**
 
+### Company boards
+
+Greenhouse, Lever, Ashby and Personio each serve a public JSON endpoint per company so the
+employer can embed its own board. Using it is exactly what it is for. You pick the
+employers, so there is no aggregator noise and postings appear the day they go live.
+
+**Tokens are not guessable — probe them.** Of 51 candidates tried across the four
+patterns, 16 resolved. Most 404s were companies on a *different* ATS rather than companies
+without a board, so a miss is worth retrying across all four before giving up on an
+employer.
+
+**One board will try to eat the digest.** OpenAI's 767 postings yielded 84 survivors
+against 51 from every other source combined. Each was individually valid, so no filter
+change addresses it — the problem is dominance, not correctness. Hence `max_per_source`:
+freshest first, then capped. A 767-posting board is not more important than a 12-posting
+one.
+
+**A flag can be true and still not mean what you want.** Ashby exposes `isRemote`, and
+OpenAI sets it on San Francisco roles — remote *within the US*. The filter honours it,
+because a remote job elsewhere is genuinely workable from Berlin, and second-guessing the
+flag is how you start dropping good jobs again. It is Gate 1's call, not the filter's.
+
 ### Judging a source
 
 Measure yield per source before keeping it, but **cut on structural reasons, not on one

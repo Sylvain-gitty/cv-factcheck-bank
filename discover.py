@@ -77,7 +77,8 @@ def log(msg=""):
 def strip_html(text) -> str:
     if not text:
         return ""
-    text = re.sub(r"<br\s*/?>", "\n", str(text), flags=re.I)
+    text = unescape(str(text))          # &lt;p&gt; -> <p>, before any tag stripping
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</p>", "\n\n", text, flags=re.I)
     text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"[ \t]+", " ", unescape(text)).strip()
@@ -222,7 +223,90 @@ def from_rss(src) -> list[dict]:
     return out
 
 
-ADAPTERS = {"json_api": from_json_api, "rss": from_rss}
+
+# --------------------------------------------------------------- company boards
+#
+# The highest-signal tier. These are the public JSON endpoints an ATS serves so a company
+# can embed its own board -- using them is exactly what they are for. You pick the
+# employers, so there is no aggregator noise, no recruiter spam, and postings appear the
+# day they go live rather than whenever a scraper next indexed them.
+#
+# Tokens are not guessable and must be verified. Of 51 candidates probed, 16 resolved:
+# most 404s were companies on a different ATS, not companies without a board.
+
+def _board_records(raw, label):
+    for r in raw:
+        r["company"] = label          # the board IS the company; never trust a nested field
+    return raw
+
+
+def from_greenhouse(src) -> list[dict]:
+    url = f"https://boards-api.greenhouse.io/v1/boards/{src['token']}/jobs?content=true"
+    jobs = json.loads(fetch(url, timeout=90)).get("jobs", [])
+    return _board_records([{
+        "title": j.get("title"),
+        "location": dig(j, "location"),
+        "url": j.get("absolute_url"),
+        "posted_at": j.get("updated_at") or j.get("first_published"),
+        "description": strip_html(j.get("content")),
+        "tags": ", ".join(d.get("name", "") for d in (j.get("departments") or [])),
+    } for j in jobs], src["label"])
+
+
+def from_ashby(src) -> list[dict]:
+    url = f"https://api.ashbyhq.com/posting-api/job-board/{src['token']}"
+    jobs = json.loads(fetch(url, timeout=60)).get("jobs", [])
+    out = []
+    for j in jobs:
+        loc = j.get("location") or ""
+        country = ((j.get("address") or {}).get("postalAddress") or {}).get("addressCountry")
+        if country and country.lower() not in str(loc).lower():
+            loc = f"{loc}, {country}".strip(", ")
+        out.append({
+            "title": j.get("title"),
+            "location": loc,
+            "url": j.get("jobUrl") or j.get("applyUrl"),
+            "posted_at": j.get("publishedAt"),
+            "description": j.get("descriptionPlain") or strip_html(j.get("descriptionHtml")),
+            "tags": j.get("department"),
+            "remote_flag": bool(j.get("isRemote")),
+        })
+    return _board_records(out, src["label"])
+
+
+def from_lever(src) -> list[dict]:
+    url = f"https://api.lever.co/v0/postings/{src['token']}?mode=json"
+    jobs = json.loads(fetch(url, timeout=60))
+    return _board_records([{
+        "title": j.get("text"),
+        "location": (j.get("categories") or {}).get("location"),
+        "url": j.get("hostedUrl") or j.get("applyUrl"),
+        "posted_at": j.get("createdAt"),
+        "description": strip_html(j.get("descriptionPlain") or j.get("description")),
+        "tags": (j.get("categories") or {}).get("team"),
+    } for j in jobs], src["label"])
+
+
+def from_personio(src) -> list[dict]:
+    root = ET.fromstring(fetch(f"https://{src['token']}.jobs.personio.de/xml", timeout=60))
+    out = []
+    for pos in root.iter("position"):
+        def t(tag):
+            el = pos.find(tag)
+            return el.text if el is not None else None
+        body = " ".join(x.text or "" for x in pos.iter("value"))
+        out.append({
+            "title": t("name"), "location": t("office"),
+            "url": (t("id") and f"https://{src['token']}.jobs.personio.de/job/{t('id')}"),
+            "posted_at": t("createdAt"), "description": strip_html(body),
+            "tags": t("department"),
+        })
+    return _board_records(out, src["label"])
+
+
+ADAPTERS = {"json_api": from_json_api, "rss": from_rss,
+            "greenhouse": from_greenhouse, "lever": from_lever,
+            "ashby": from_ashby, "personio": from_personio}
 
 
 # --------------------------------------------------------------------------- filtering
@@ -318,7 +402,11 @@ def main() -> int:
 
     cfg = yaml.safe_load((HERE / "sources.yaml").read_text(encoding="utf-8"))
     rules = cfg.get("rules", {})
-    sources = cfg.get("sources", [])
+    sources = list(cfg.get("sources", []))
+    for b in cfg.get("company_boards") or []:
+        if b.get("enabled", True):
+            sources.append({**b, "id": b.get("id") or f"{b['type']}-{b['token']}",
+                            "enabled": True, "defaults": b.get("defaults", {})})
 
     if args.list:
         log("\nFETCHED SOURCES")
@@ -329,8 +417,10 @@ def main() -> int:
         for s in cfg.get("email_alert_sources", []):
             log(f"        {s['id']:<18} {'email':<9} {s['label']}")
         boards = cfg.get("company_boards") or []
-        log(f"\nCOMPANY BOARDS: {len(boards)} configured"
-            + ("  <-- the highest-signal tier, and it is empty" if not boards else ""))
+        log(f"\nCOMPANY BOARDS ({len(boards)}) — you chose these, so no aggregator noise")
+        for b in boards:
+            mark = "on " if b.get("enabled", True) else "off"
+            log(f"  [{mark}] {b['token']:<18} {b['type']:<11} {b['label']}")
         return 0
 
     if args.reset_seen and SEEN.exists():
@@ -378,6 +468,15 @@ def main() -> int:
                 continue
             new_here.append(job)
 
+        # PER-SOURCE CAP. One large board can swamp everything else: OpenAI's 767 postings
+        # yielded 84 survivors against 51 from every other source combined. Each was
+        # individually valid, so no filter fix addresses it -- the problem is dominance,
+        # not correctness. Freshest first, then cap.
+        cap = rules.get("max_per_source", 8)
+        new_here.sort(key=lambda j: str(j.get("posted_at") or ""), reverse=True)
+        if len(new_here) > cap:
+            log(f"  capped at {cap} (of {len(new_here)}) so one board cannot dominate")
+            new_here = new_here[:cap]
         kept.extend(new_here)
         log(f"  {len(raw)} fetched | {dropped_rules} filtered | {dropped_dupe} duplicate "
             f"| {len(new_here)} new")

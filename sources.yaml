@@ -70,6 +70,10 @@ rules:
 
   drop_unknown_location: true      # unknown is not the same as allowed
 
+  # No single source may contribute more than this per run. A 767-posting board is not
+  # more important than a 12-posting one; without a cap it simply drowns it out.
+  max_per_source: 8
+
   countries_allow: [DE, EU, REMOTE]
   languages_allow: [en, de]
   drop_title_contains:
@@ -384,5 +388,34 @@ email_alert_sources:
 #   https://api.lever.co/v0/postings/<token>?mode=json
 #   https://api.ashbyhq.com/posting-api/job-board/<token>
 #   https://<company>.jobs.personio.de/xml
-company_boards: []
-  # - {id: gh-example, label: Example GmbH, type: greenhouse, token: examplegmbh}
+# Verified 2026-09-01 by probing 51 candidate tokens; 16 resolved with live postings.
+# Most 404s were companies on a different ATS, not companies without a board -- so a miss
+# is worth re-probing across all four patterns before giving up on an employer.
+#
+# ADD THE EMPLOYERS YOU ACTUALLY WANT. That is the entire point of this tier: you choose
+# the list, so there is no aggregator noise and no recruiter spam in it.
+company_boards:
+  # --- AI / ML first ---
+  - {label: Helsing,        type: greenhouse, token: helsing}          # defence AI, Munich/Berlin
+  - {label: Celonis,        type: greenhouse, token: celonis}          # process mining, Munich
+  - {label: OpenAI,         type: ashby,      token: openai}           # Munich/Zurich/London
+  - {label: Langdock,       type: ashby,      token: langdock}         # LLM platform, Berlin
+  - {label: Sereact,        type: ashby,      token: sereact}          # robotics AI, Stuttgart
+  - {label: Tacto,          type: ashby,      token: tacto}            # supply-chain AI, Munich
+
+  # --- Berlin tech, data-heavy ---
+  - {label: N26,            type: greenhouse, token: n26}
+  - {label: GetYourGuide,   type: greenhouse, token: getyourguide}
+  - {label: Raisin,         type: greenhouse, token: raisin}
+  - {label: Contentful,     type: greenhouse, token: contentful}
+  - {label: Trade Republic, type: greenhouse, token: traderepublic}
+  - {label: HelloFresh,     type: greenhouse, token: hellofresh}
+  - {label: SumUp,          type: greenhouse, token: sumup}
+  - {label: Flix,           type: greenhouse, token: flix}
+  - {label: Doctolib,       type: greenhouse, token: doctolib}
+
+  # Probed and NOT on these ATSs (all 404): Zalando, Delivery Hero, SoundCloud, Babbel,
+  # Taxfix, Forto, DeepL, Wayfair, TIER, wefox, Aleph Alpha, Grover, Choco, Pitch,
+  # Solaris, Mistral, deepset, QuantCo, Jina, Synthesia, Scoutbee, Merantix,
+  # Black Forest Labs. Personio boards (Enpal, 1KOMMA5) rate-limited at 429 -- retry.
+  # They may use SmartRecruiters, Workday, Join, or their own careers page.
