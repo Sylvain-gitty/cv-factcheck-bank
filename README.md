@@ -17,6 +17,7 @@ python discover.py                    # fetch jobs -> jobs/*.yaml
 python rank.py --llm                  # score + re-rank -> out/digest.md
 python tailor.py jobs/<slug>.yaml --explain
 python letter.py jobs/<slug>.yaml     # draft -> you write the opening -> render
+python track.py --add <slug>          # log it; python track.py for the report
 ```
 
 PyYAML is the only dependency. No LaTeX, no headless browser, no API key, no build step.
@@ -286,6 +287,40 @@ Tested against a deliberately generic opening — *"I am writing to apply… 12 
 experience delivering value"* — five gates fired at once, including the fabricated `12`
 and the deny-listed phrase carrying it.
 
+## Tracking outcomes
+
+`track.py` keeps `applications.csv` — open it in a spreadsheet and edit the outcome columns
+by hand. `--add` snapshots a job's score at the moment you apply, because re-deriving it
+later would score against a corpus that no longer exists.
+
+Your job search is a product with one metric and a four-stage funnel. The report exists to
+stop you drawing conclusions the data cannot support.
+
+**Small n is not a rate.** Below 25 resolved applications the report refuses to print a
+percentage, and shows you the interval instead. At 7/19 that interval is **19%–59%** — it
+spans nearly every value it could take, which is exactly the point. A number there would
+look like a finding and be an anecdote.
+
+**No reply is not a rejection.** It is not-yet-observed. Applications inside a 21-day
+window are held out as censored rather than counted as failures — otherwise every rate is
+biased downwards, worst precisely when you are most active.
+
+**Point estimates get compared, not just listed.** On simulated data seeded with a real
+effect (boards replying at 30%, aggregators at 8%), the report showed 50% against 12% — and
+still said:
+
+```
+greenhouse-celonis looks better than arbeitnow, but the intervals
+overlap — not yet a difference you can act on
+```
+
+Two numbers can look decisive while their intervals overlap completely. Saying so is the
+difference between a report and a rationalisation, and it is the same instinct as declining
+to claim an F2 gain whose interval crossed zero — turned on your own job search.
+
+It also warns when you have run several CV variants across too few applications to
+attribute anything: hold one fixed for 25 before changing it.
+
 ## Confirming facts
 
 ```bash
@@ -362,6 +397,7 @@ validate.py         integrity, guardrails, coverage report
 render.py           bank -> HTML / Markdown / traceability
 tailor.py           tailor to one job posting, with checks
 letter.py           motivation letter: evidence, draft, gates, render
+track.py            application log, funnel, response rates with intervals
 confirm.py          the draft -> confirmed human gate
 ```
 
