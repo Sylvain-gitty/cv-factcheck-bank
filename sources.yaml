@@ -414,8 +414,51 @@ company_boards:
   - {label: Flix,           type: greenhouse, token: flix}
   - {label: Doctolib,       type: greenhouse, token: doctolib}
 
-  # Probed and NOT on these ATSs (all 404): Zalando, Delivery Hero, SoundCloud, Babbel,
-  # Taxfix, Forto, DeepL, Wayfair, TIER, wefox, Aleph Alpha, Grover, Choco, Pitch,
-  # Solaris, Mistral, deepset, QuantCo, Jina, Synthesia, Scoutbee, Merantix,
-  # Black Forest Labs. Personio boards (Enpal, 1KOMMA5) rate-limited at 429 -- retry.
-  # They may use SmartRecruiters, Workday, Join, or their own careers page.
+
+  # --- AI / ML companies, second probe round -------------------------------
+  # Every one of these 404'd in round one because it was probed on the WRONG ATS.
+  # Trying all four patterns per company is the whole difference.
+  - {label: DeepL,          type: ashby,      token: deepl}            # Cologne, MT
+  - {label: Aleph Alpha,    type: ashby,      token: alephalpha}       # Heidelberg, LLMs
+  - {label: deepset,        type: ashby,      token: deepsetai}        # Berlin, Haystack
+  - {label: Parloa,         type: greenhouse, token: parloa}           # Berlin, voice AI
+  - {label: ElevenLabs,     type: ashby,      token: elevenlabs}       # speech AI
+  - {label: Synthesia,      type: ashby,      token: synthesia}        # video AI
+  - {label: Poolside,       type: ashby,      token: poolside}         # code models, Paris
+  - {label: Nabla,          type: ashby,      token: nabla}            # clinical AI, Paris
+  - {label: Owkin,          type: ashby,      token: owkin}            # AI biotech, Paris
+  - {label: Cradle,         type: ashby,      token: cradlebio}        # protein ML, NL
+  - {label: PhysicsX,       type: greenhouse, token: physicsx}         # simulation ML
+  - {label: Photoroom,      type: ashby,      token: photoroom}        # vision, Paris
+  - {label: Dataiku,        type: greenhouse, token: dataiku}          # DS platform
+  - {label: Twaice,         type: personio,   token: twaice}           # battery analytics
+
+  # --- German / Berlin tech, data-heavy ------------------------------------
+  - {label: Statista,       type: ashby,      token: statista}         # Hamburg, data
+  - {label: Enpal,          type: ashby,      token: enpal}            # Berlin, solar
+  - {label: Staffbase,      type: greenhouse, token: staffbase}
+  - {label: Bitpanda,       type: greenhouse, token: bitpanda}
+  - {label: Solaris,        type: greenhouse, token: solarisbank}
+  - {label: Moss,           type: ashby,      token: moss}
+  - {label: Pliant,         type: ashby,      token: pliant}
+  - {label: Finn,           type: lever,      token: finn}
+  - {label: Vay,            type: greenhouse, token: vay}              # Berlin, teledriving
+  - {label: Clark,          type: ashby,      token: clark}
+  - {label: Choco,          type: ashby,      token: choco}
+  - {label: Grover,         type: greenhouse, token: grover}
+  - {label: Tourlane,       type: ashby,      token: tourlane}
+  - {label: Babbel,         type: ashby,      token: babbel}
+  - {label: Konux,          type: greenhouse, token: konux}            # Munich, rail AI
+  - {label: Ecosia,         type: personio,   token: ecosia}
+  - {label: Personio,       type: personio,   token: personio}
+  - {label: Ada Health,     type: personio,   token: ada}              # Berlin, medical AI
+
+  # Probed across ALL FOUR patterns and not found on any (they use SmartRecruiters,
+  # Workday, Join, or their own careers page): Zalando, Delivery Hero, SoundCloud,
+  # Taxfix, Forto, Sennder, CoachHub, Omio, Wefox, Mambu, Volocopter, Blinkist,
+  # Circula, McMakler, Kaia Health, Wayfair, TIER, Pitch, Mistral AI, Hugging Face,
+  # Cognigy, Black Forest Labs, QuantCo, Jina, Scoutbee, Merantix, 1KOMMA5.
+  #
+  # ROUND ONE'S LESSON: DeepL, Aleph Alpha, Synthesia, deepset, Enpal and Parloa were all
+  # in that "not found" list until they were probed on a different ATS. A 404 on one
+  # pattern says nothing. Try all four before writing an employer off.

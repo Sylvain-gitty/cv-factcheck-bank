@@ -137,10 +137,17 @@ Greenhouse, Lever, Ashby and Personio each serve a public JSON endpoint per comp
 employer can embed its own board. Using it is exactly what it is for. You pick the
 employers, so there is no aggregator noise and postings appear the day they go live.
 
-**Tokens are not guessable — probe them.** Of 51 candidates tried across the four
-patterns, 16 resolved. Most 404s were companies on a *different* ATS rather than companies
-without a board, so a miss is worth retrying across all four before giving up on an
-employer.
+**Tokens are not guessable — probe them, across all four patterns.** Round one tried one
+pattern per company and found 16 of 51. Round two tried all four for every candidate and
+found 32 more — including DeepL, Aleph Alpha, Synthesia, deepset, Enpal and Parloa, every
+one of which was in round one's "not found" list. **A 404 on one pattern says nothing.**
+
+47 boards now fetch in about 35 seconds, so breadth is nearly free.
+
+**Most boards will be silent on any given day, and that is fine.** On a representative run
+24 employers contributed and 23 did not. A one-job board costs one request and shows you
+that job the day it appears — which is the entire argument for this tier over an
+aggregator. Do not prune on a quiet day.
 
 **One board will try to eat the digest.** OpenAI's 767 postings yielded 84 survivors
 against 51 from every other source combined. Each was individually valid, so no filter
