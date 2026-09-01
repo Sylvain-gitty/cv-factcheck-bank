@@ -14,6 +14,7 @@ for f in profile entities facts vocab; do cp $f.example.yaml $f.yaml; done
 python validate.py                    # integrity + guardrails + coverage
 python render.py --pdf                # all CV variants -> out/ (HTML + PDF)
 python discover.py                    # fetch jobs -> jobs/*.yaml
+python rank.py --llm                  # score + re-rank -> out/digest.md
 python tailor.py jobs/<slug>.yaml --explain
 ```
 
@@ -99,6 +100,40 @@ down to 7. Two things it taught, both the hard way:
 
 Stage 2a is tuned for recall at zero cost, not precision. Its job is to make the survivors
 reviewable in thirty seconds — deciding which to pursue is yours.
+
+## Ranking a batch
+
+`rank.py` scores every discovered job against each role archetype's `match_text`, ranks
+the batch, writes a digest, and captures your pursue/skip decisions.
+
+**BM25 again, and the orientation matters:** the index is built over the *jobs*, and each
+archetype's `match_text` is the *query*. Many documents, short query — the regime BM25 was
+designed for. Querying three archetype "documents" with a job description would give
+degenerate IDF over a corpus of three.
+
+**Scores are batch-relative, and the digest says so.** BM25's IDF depends on the corpus, so
+today's 14.2 and tomorrow's are not the same scale. Only the rank within a run is
+meaningful. Reporting a raw score as a percentage would be a number that looks absolute and
+is not.
+
+**An argmax without a margin is a point estimate with no error bar.** The three archetypes
+share most of their vocabulary, so the winner is often noise. On a real batch, margins
+between the top two ranged from 76% (unambiguous) down to 21% — a coin flip. Below a 30%
+margin the label is reported as ambiguous rather than asserted:
+
+```
+ 1. [100] technical-pm                 Manager, Applied AI Architects
+ 2. [ 96]~ai-engineer?/data-scientist? Data Scientist (m/w/d) - Machine Learning
+```
+
+**Decisions are the point of Gate 1, twice over.** Ticking `p`/`s` in `decisions.txt`
+filters today, and `.state/decisions.json` snapshots the scores *at decision time* — the
+training set for tuning the ranker against your own judgement later. Re-deriving those
+features afterwards would mean scoring against a corpus that no longer exists.
+
+The optional `--llm` pass adds structured judgement on the top N. Its most valuable output
+is `missing_requirements`, aggregated across the batch: the market telling you what to
+learn next.
 
 ## Tailoring to a job
 
@@ -207,6 +242,7 @@ vocab.yaml          controlled vocabulary for skill tags
 render_config.yaml  CV variants: archetype, section order, page budget, language
 sources.yaml        where jobs come from, and what each site permits
 discover.py         fetch, normalise, deduplicate, filter -> jobs/*.yaml
+rank.py             score against archetypes, rank, digest, capture decisions
 validate.py         integrity, guardrails, coverage report
 render.py           bank -> HTML / Markdown / traceability
 tailor.py           tailor to one job posting, with checks

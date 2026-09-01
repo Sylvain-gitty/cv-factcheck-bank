@@ -12,6 +12,7 @@ entities.yaml
 facts.yaml
 vocab.yaml
 confirm.txt
+decisions.txt
 NOTES.private.md
 
 # Rendered output: CVs, traces, check reports
