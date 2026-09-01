@@ -135,12 +135,21 @@ def dig(obj, path):
         else:
             return None
     if isinstance(cur, dict):
-        for k in ("name", "title", "label", "value", "ort", "arbeitgeber"):
+        for k in ("name", "title", "label", "value", "ort", "arbeitgeber", "city"):
             if k in cur:
                 return cur[k]
         return json.dumps(cur, ensure_ascii=False)
     if isinstance(cur, list):
-        return ", ".join(str(x) for x in cur if not isinstance(x, (dict, list)))
+        parts = []
+        for x in cur:
+            if isinstance(x, dict):
+                # A list of location objects: keep whatever names the place.
+                parts.append(" ".join(str(x[k]) for k in
+                                      ("city", "name", "title", "country_code", "countryName",
+                                       "country", "region") if x.get(k)))
+            elif not isinstance(x, list):
+                parts.append(str(x))
+        return ", ".join(p for p in parts if p)
     return cur
 
 
@@ -248,8 +257,19 @@ def passes_rules(job, rules) -> tuple[bool, str]:
         return False, f"description too short ({len(desc)} chars)"
 
     allow = [c.lower() for c in rules.get("countries_allow", [])]
+    if allow and not loc and not job.get("remote_flag"):
+        if rules.get("drop_unknown_location", True):
+            return False, "location not stated and not flagged remote"
     if allow and loc:
         remote = job.get("remote_flag") or "remote" in loc or "anywhere" in loc
+        # "Remote" is not a location. A remote role stating "Singapore" or "USA" is remote
+        # *within that region*, and treating the remote flag as a blanket pass was letting
+        # them all through. Scopes that genuinely include Europe are listed explicitly.
+        if remote and loc:
+            ok_scopes = [w.lower() for w in rules.get("remote_scopes_allow", [])]
+            named = [w.lower() for w in rules.get("remote_scopes_deny", [])]
+            if any(n in loc for n in named) and not any(o in loc for o in ok_scopes):
+                return False, f"remote but scoped to '{job.get('location')}'"
         hit = remote and "remote" in allow
         hit = hit or any(a in loc for a in ("de", "germany", "deutschland") if "de" in allow)
         hit = hit or ("eu" in allow and any(
@@ -261,13 +281,15 @@ def passes_rules(job, rules) -> tuple[bool, str]:
 
 def near_duplicate(job, kept) -> str | None:
     """Same company, near-identical title, close in time. Word-overlap, not embeddings."""
-    c, t = norm_company(job["company"]), set(norm_title(job["title"]).split())
+    # .get(), not [] -- merging strips None-valued keys entirely, so a feed that omits
+    # the company (RSS often does) leaves no key at all rather than a None.
+    c, t = norm_company(job.get("company")), set(norm_title(job.get("title")).split())
     if not c or not t:
         return None
     for other in kept:
-        if norm_company(other["company"]) != c:
+        if norm_company(other.get("company")) != c:
             continue
-        ot = set(norm_title(other["title"]).split())
+        ot = set(norm_title(other.get("title")).split())
         if not ot:
             continue
         overlap = len(t & ot) / max(len(t), len(ot))

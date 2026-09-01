@@ -101,6 +101,38 @@ down to 7. Two things it taught, both the hard way:
 Stage 2a is tuned for recall at zero cost, not precision. Its job is to make the survivors
 reviewable in thirty seconds — deciding which to pursue is yours.
 
+### Missing data is not permission
+
+Three bugs in the location filter, all the same shape, all found by reading one posting
+that should not have been there:
+
+1. **A list of dicts parsed to an empty string.** One feed sends
+   `locations: [{city: "Lisbon", country_code: "PT"}]`; the extractor skipped dicts and
+   returned `""`.
+2. **A blank location skipped the check entirely.** The rule read `if allow and loc:` —
+   so a job with no stated location passed unexamined. **Unknown is not the same as
+   allowed**, and a filter that opts out when data is missing is a filter with a hole in
+   it.
+3. **`remote` was treated as a blanket pass.** A remote posting that names Singapore or
+   the USA is remote *within that region*. Scopes that genuinely include Europe are now
+   listed explicitly.
+
+Together those three let a Volkswagen role in **Portugal** rank third on a search
+restricted to Germany, the EU and remote. Fixing them took the batch from 28 jobs to 17,
+and every one that left was one you could not have taken.
+
+### Judging a source
+
+Measure yield per source before keeping it, but **cut on structural reasons, not on one
+sample.** After the location fix, Landing.jobs contributed zero — not a bad day, but
+because it is Lisbon-focused, which no amount of re-running changes. The Muse went the
+same way: US-centric across 20,442 pages. Sources that scored nothing for reasons that
+might just be a quiet day were kept.
+
+And treat the ranking itself sceptically. After adding six sources the new top result was
+a talent-marketplace recruiting advert, not a job — dense with exactly the vocabulary in
+your `match_text`. Rank measures lexical match, not whether the job is real.
+
 ## Ranking a batch
 
 `rank.py` scores every discovered job against each role archetype's `match_text`, ranks

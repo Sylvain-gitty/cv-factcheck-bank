@@ -50,6 +50,15 @@ rules:
     - "latam only"
     - "india only"
 
+  # A remote posting that names a region is remote *within* it. Without this, the remote
+  # flag was a blanket pass and Singapore and USA roles reached the digest.
+  remote_scopes_allow: [worldwide, anywhere, global, europe, emea, eu, germany, deutschland, berlin, remote]
+  remote_scopes_deny:
+    [usa, united states, u.s., canada, singapore, india, philippines, latam, apac,
+     brazil, australia, japan, china, mexico, argentina, nigeria, kenya, uk only]
+
+  drop_unknown_location: true      # unknown is not the same as allowed
+
   countries_allow: [DE, EU, REMOTE]
   languages_allow: [en, de]
   drop_title_contains:
@@ -145,6 +154,143 @@ sources:
       description: description
       tags: tags
     defaults: {language: de}
+
+  # --- added 2026-09-01 after testing candidate endpoints directly -------------
+  # All six verified returning HTTP 200 with parseable payloads on that date.
+  # Whether each EARNS its place is a separate question, measured after the fact:
+  # a source that returns 500 postings and contributes nothing past the filter is
+  # cost without value. See the yield table in README.md.
+
+  - id: workable-berlin
+    label: Workable — Berlin, data
+    type: json_api
+    enabled: true
+    url: https://jobs.workable.com/api/v1/jobs
+    params: {query: data, location: Berlin}
+    root: jobs
+    map:
+      id: id
+      title: title
+      company: company
+      location: locations
+      url: url
+      posted_at: created
+      description: description
+    defaults: {language: en}
+
+  - id: workable-ml
+    label: Workable — Berlin, machine learning
+    type: json_api
+    enabled: false
+    # DISABLED 2026-09-01. Redundant by construction: the "data" query already returns
+    # these, and 2 of its 6 results were caught as duplicates of workable-berlin. Re-enable
+    # only if you narrow workable-berlin's query.
+    url: https://jobs.workable.com/api/v1/jobs
+    params: {query: machine learning, location: Berlin}
+    root: jobs
+    map:
+      id: id
+      title: title
+      company: company
+      location: locations
+      url: url
+      posted_at: created
+      description: description
+    defaults: {language: en}
+
+  - id: remotive
+    label: Remotive
+    type: json_api
+    enabled: true
+    url: https://remotive.com/api/remote-jobs
+    root: jobs
+    map:
+      id: id
+      title: title
+      company: company_name
+      location: candidate_required_location
+      url: url
+      posted_at: publication_date
+      description: description
+      salary_raw: salary
+      tags: tags
+    defaults: {remote_flag: true, language: en}
+
+  - id: jobicy
+    label: Jobicy
+    type: json_api
+    enabled: true
+    url: https://jobicy.com/api/v2/remote-jobs?count=50
+    root: jobs
+    map:
+      id: id
+      title: jobTitle
+      company: companyName
+      location: jobGeo
+      url: url
+      posted_at: pubDate
+      description: jobDescription
+      tags: jobIndustry
+    defaults: {remote_flag: true, language: en}
+
+  - id: himalayas
+    label: Himalayas
+    type: json_api
+    enabled: true
+    url: https://himalayas.app/jobs/api?limit=50
+    root: jobs
+    map:
+      id: guid
+      title: title
+      company: companyName
+      location: locationRestrictions
+      url: applicationLink
+      posted_at: pubDate
+      description: description
+      tags: categories
+    defaults: {remote_flag: true, language: en}
+
+  - id: weworkremotely
+    label: We Work Remotely — programming
+    type: rss
+    enabled: true
+    url: https://weworkremotely.com/categories/remote-programming-jobs.rss
+    defaults: {remote_flag: true, language: en}
+
+  - id: themuse
+    label: The Muse
+    type: json_api
+    enabled: false
+    # DISABLED 2026-09-01. 20 fetched, 20 filtered, 0 kept -- but the reason is structural,
+    # not a bad sample: US-centric (first page was Burbank, CA) across 20,442 pages of
+    # largely non-technical roles. Running it more will not make it a Berlin DS source.
+    url: https://www.themuse.com/api/public/jobs?page=1
+    root: results
+    map:
+      id: id
+      title: name
+      company: company
+      location: locations
+      url: refs.landing_page
+      posted_at: publication_date
+      description: contents
+      tags: categories
+    defaults: {language: en}
+
+  - id: landingjobs
+    label: Landing.jobs — EU tech
+    type: json_api
+    enabled: true
+    url: https://landing.jobs/api/v1/jobs?limit=50
+    map:
+      id: id
+      title: title
+      company: company_name
+      location: locations
+      url: url
+      posted_at: published_at
+      description: role_description
+    defaults: {language: en}
 
   - id: bundesagentur
     label: Bundesagentur für Arbeit — Jobsuche
