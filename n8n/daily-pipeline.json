@@ -1,0 +1,257 @@
+{
+  "name": "Job pipeline — daily (Stages 1, 2a/2b, Gate 1)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 7 * * 1-5" }
+          ]
+        }
+      },
+      "id": "trigger-daily",
+      "name": "07:00 weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-620, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/discover",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"limit\": 60}",
+        "options": { "timeout": 600000 }
+      },
+      "id": "discover",
+      "name": "Stage 1 — discover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-400, 300],
+      "notes": "Fetches every enabled source and company board, normalises, dedupes, applies the Stage 2a rules filter. Writes jobs/*.yaml."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "discover-ok",
+      "name": "Discovery succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-180, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/rank",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"top\": 10, \"llm\": false}",
+        "options": { "timeout": 600000 }
+      },
+      "id": "rank",
+      "name": "Stage 2b/2c — rank",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [60, 200],
+      "notes": "Set llm:true once OPENROUTER_API_KEY is in the bridge process environment. 2b runs either way."
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/digest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "id": "digest",
+      "name": "Fetch digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the Gate 1 message. Each job gets two links back into this\n// workflow's resume webhook - clicking one records pursue or skip.\nconst d = $input.first().json;\nconst jobs = d.jobs || [];\nif (!jobs.length) {\n  return [{ json: { empty: true, html: '<p>No jobs surfaced today.</p>', count: 0 } }];\n}\nconst resume = $execution.resumeUrl;\nconst rows = jobs.map((j, i) => {\n  const amb = j.archetype_confident === false ? ' <i>(ambiguous)</i>' : '';\n  return `<tr>\n    <td style=\"padding:8px 6px;border-bottom:1px solid #eee;vertical-align:top\">\n      <b>${i + 1}. ${j.title || ''}</b><br>\n      <span style=\"color:#555;font-size:13px\">${j.company || '?'} &middot; ${j.location || 'location unstated'} &middot; via ${j.source}</span><br>\n      <span style=\"color:#555;font-size:13px\">${j.archetype || '?'}${amb} &middot; batch score ${j.score}/100</span><br>\n      <a href=\"${j.url}\" style=\"font-size:13px\">open posting</a>\n      &nbsp;|&nbsp; <a href=\"${resume}?slug=${encodeURIComponent(j.slug)}&verdict=pursue\">pursue</a>\n      &nbsp;|&nbsp; <a href=\"${resume}?slug=${encodeURIComponent(j.slug)}&verdict=skip\">skip</a>\n    </td></tr>`;\n}).join('');\nconst html = `<div style=\"font-family:system-ui,sans-serif;max-width:720px\">\n  <h2 style=\"font-size:17px\">${jobs.length} job(s) — ${new Date().toISOString().slice(0, 10)}</h2>\n  <p style=\"color:#555;font-size:13px\">Rank is meaningful; the score is relative to this batch only.\n  An <i>ambiguous</i> archetype means the top two were within 30% of each other.</p>\n  <table style=\"border-collapse:collapse;width:100%\">${rows}</table>\n  <p style=\"color:#777;font-size:12px\">Gate 1. Every choice is also a training label —\n  the ranker needs roughly 150 before it can be tuned against your judgement.</p>\n</div>`;\nreturn [{ json: { empty: false, html, count: jobs.length } }];"
+      },
+      "id": "build-digest",
+      "name": "Build Gate 1 message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NOTIFY_EMAIL }}",
+        "subject": "=Job digest — {{ $json.count }} to review",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-digest",
+      "name": "Send digest",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 200],
+      "notes": "Swap for the Telegram node if you prefer inline buttons — the resume URLs work the same way."
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {}
+      },
+      "id": "gate-1",
+      "name": "GATE 1 — you decide",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [940, 200],
+      "webhookId": "gate1-pursue-skip",
+      "notes": "Execution pauses here indefinitely. Each pursue/skip link in the email resumes it with the slug and verdict in the query string."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/tailor",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"slug\": \"{{ $json.query.slug }}\", \"variant\": \"ds\"}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "tailor",
+      "name": "Stage 3 — tailor CV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 120],
+      "notes": "Only runs on a pursue. Produces the tailored CV plus its six checks."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/letter",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"slug\": \"{{ $('GATE 1 — you decide').item.json.query.slug }}\"}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "letter",
+      "name": "Stage 4 — letter draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1380, 120],
+      "notes": "Produces the draft with the opening left as a TODO block. GATE 3 is offline: you write those two sentences by hand."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.query.verdict }}",
+              "rightValue": "pursue",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "pursued",
+      "name": "Pursue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1160, 320]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NOTIFY_EMAIL }}",
+        "subject": "=Ready for you — {{ $('GATE 1 — you decide').item.json.query.slug }}",
+        "emailFormat": "html",
+        "html": "=<div style=\"font-family:system-ui,sans-serif\"><h3>CV tailored, letter drafted</h3><p><code>{{ $('GATE 1 — you decide').item.json.query.slug }}</code></p><p><b>GATE 2</b> — read the CV. Every time.<br><b>GATE 3</b> — write the letter opening yourself. Every gate fails until you do.</p><pre style=\"background:#f6f6f6;padding:10px;font-size:12px\">python letter.py --check {{ $('GATE 1 — you decide').item.json.query.slug }}\npython package.py {{ $('GATE 1 — you decide').item.json.query.slug }}</pre><p style=\"color:#777;font-size:12px\">Gate 4: you submit. Nothing here does.</p></div>",
+        "options": {}
+      },
+      "id": "notify-ready",
+      "name": "Notify — gates 2 and 3",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1600, 120]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NOTIFY_EMAIL }}",
+        "subject": "Job pipeline failed",
+        "emailFormat": "html",
+        "html": "=<p>Discovery failed at {{ $now }}.</p><pre>{{ JSON.stringify($json, null, 2).slice(0, 2000) }}</pre><p>Is the bridge running? <code>python bridge.py</code></p>",
+        "options": {}
+      },
+      "id": "notify-fail",
+      "name": "Alert on failure",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [60, 420]
+    }
+  ],
+  "connections": {
+    "07:00 weekdays": { "main": [[{ "node": "Stage 1 — discover", "type": "main", "index": 0 }]] },
+    "Stage 1 — discover": { "main": [[{ "node": "Discovery succeeded?", "type": "main", "index": 0 }]] },
+    "Discovery succeeded?": {
+      "main": [
+        [{ "node": "Stage 2b/2c — rank", "type": "main", "index": 0 }],
+        [{ "node": "Alert on failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Stage 2b/2c — rank": { "main": [[{ "node": "Fetch digest", "type": "main", "index": 0 }]] },
+    "Fetch digest": { "main": [[{ "node": "Build Gate 1 message", "type": "main", "index": 0 }]] },
+    "Build Gate 1 message": { "main": [[{ "node": "Send digest", "type": "main", "index": 0 }]] },
+    "Send digest": { "main": [[{ "node": "GATE 1 — you decide", "type": "main", "index": 0 }]] },
+    "GATE 1 — you decide": { "main": [[{ "node": "Pursue?", "type": "main", "index": 0 }]] },
+    "Pursue?": {
+      "main": [
+        [{ "node": "Stage 3 — tailor CV", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Stage 3 — tailor CV": { "main": [[{ "node": "Stage 4 — letter draft", "type": "main", "index": 0 }]] },
+    "Stage 4 — letter draft": { "main": [[{ "node": "Notify — gates 2 and 3", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "cv-fact-bank" },
+  "tags": []
+}

@@ -19,6 +19,7 @@ python tailor.py jobs/<slug>.yaml --explain
 python letter.py jobs/<slug>.yaml     # draft -> you write the opening -> render
 python package.py <slug>              # assemble; you submit
 python track.py                       # the report
+python bridge.py                      # local API for n8n (optional)
 ```
 
 PyYAML is the only dependency. No LaTeX, no headless browser, no API key, no build step.
@@ -395,6 +396,30 @@ and were invisible until the rendered page was actually looked at:
 
 **Look at the artefact.**
 
+## Running it on a schedule
+
+`n8n/` holds two importable workflows and `bridge.py` is the local API they call. See
+`n8n/README.md`.
+
+**Why a bridge rather than Execute Command nodes:** n8n runs in Docker; the pipeline is
+Python on the host. A container cannot run a program on its host, and the workarounds —
+installing Python into the n8n image, or mounting the host filesystem into a Node container
+to shell out — both break in ways that are hard to debug at 07:00 on a Tuesday. An HTTP
+boundary is the honest seam. It also means nothing in the workflows changes if you move
+n8n, or drop it and use cron.
+
+**It is a server that runs programs, so it is built like one:** bound to `127.0.0.1` only,
+a bearer token generated on first run, and a fixed action allowlist — no endpoint takes a
+command string, and the one caller-supplied value is a slug validated before it reaches a
+subprocess. Verified against `a; rm -rf /`, `../../etc/passwd`, `a && curl evil.com` and
+`$(whoami)`; all rejected with 400.
+
+**Gate 1 lives in n8n; gates 2, 3 and 4 deliberately do not.** A `Wait` node pauses the
+execution and the digest email carries pursue/skip links back to its resume URL. Reading the
+CV, writing the letter opening and submitting stay at your desk — building an approve button
+for those would turn three acts of judgement into three clicks, which is the failure this
+design exists to prevent.
+
 ## Privacy
 
 `.gitignore` excludes `profile.yaml`, `entities.yaml`, `facts.yaml`, `vocab.yaml`,
@@ -421,6 +446,7 @@ letter.py           motivation letter: evidence, draft, gates, render
 package.py          assemble a ready-to-send application; refuses to send it
 answers.yaml        screening-question answer bank
 track.py            application log, funnel, response rates with intervals
+bridge.py           loopback HTTP API over the stages, for n8n or cron
 confirm.py          the draft -> confirmed human gate
 ```
 

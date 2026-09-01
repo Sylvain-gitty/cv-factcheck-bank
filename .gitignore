@@ -25,6 +25,7 @@ answers.yaml
 jobs/*.yaml
 !jobs/example-*.yaml
 .state/
+bridge-token
 
 # LLM selector artefacts
 llm_selection.json

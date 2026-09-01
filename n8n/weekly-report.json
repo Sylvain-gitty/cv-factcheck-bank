@@ -1,0 +1,105 @@
+{
+  "name": "Job pipeline — weekly report (Stage 6)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 18 * * 5" }
+          ]
+        }
+      },
+      "id": "trigger-weekly",
+      "name": "Friday 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-460, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/report",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "options": { "timeout": 120000 }
+      },
+      "id": "report",
+      "name": "Stage 6 — report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-240, 240]
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/open",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "options": { "timeout": 120000 }
+      },
+      "id": "open-items",
+      "name": "What needs chasing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-20, 240]
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:{{ $vars.BRIDGE_PORT || 899 }}/queue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.BRIDGE_TOKEN }}" }
+          ]
+        },
+        "options": { "timeout": 120000 }
+      },
+      "id": "queue",
+      "name": "Ready-to-send queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [200, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Three plain-text reports stitched into one email. Deliberately not\n// reformatted: track.py already says what can and cannot be concluded,\n// and paraphrasing it here would be a second place for that wording to\n// drift out of sync with the statistics.\nconst report = $('Stage 6 — report').first().json.stdout || '';\nconst open = $('What needs chasing').first().json.stdout || '';\nconst queue = $input.first().json.stdout || '';\nconst esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');\nconst block = (title, body) =>\n  `<h3 style=\"font-size:14px;margin:18px 0 6px\">${title}</h3>` +\n  `<pre style=\"background:#f6f6f6;padding:10px;font-size:12px;line-height:1.45;\" +\n   \"overflow-x:auto;white-space:pre-wrap\">${esc(body.trim() || '—')}</pre>`;\nconst html = `<div style=\"font-family:system-ui,sans-serif;max-width:760px\">` +\n  block('Response rates', report) +\n  block('Outstanding — chase anything past 7 days', open) +\n  block('Ready-to-send queue', queue) +\n  `<p style=\"color:#777;font-size:12px\">No reply is not a rejection for 21 days. ` +\n  `A rate without an interval is a guess with a decimal point.</p></div>`;\nreturn [{ json: { html } }];"
+      },
+      "id": "compose",
+      "name": "Compose",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 240]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $vars.NOTIFY_EMAIL }}",
+        "subject": "=Job search — weekly report",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send",
+      "name": "Send weekly report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [640, 240]
+    }
+  ],
+  "connections": {
+    "Friday 18:00": { "main": [[{ "node": "Stage 6 — report", "type": "main", "index": 0 }]] },
+    "Stage 6 — report": { "main": [[{ "node": "What needs chasing", "type": "main", "index": 0 }]] },
+    "What needs chasing": { "main": [[{ "node": "Ready-to-send queue", "type": "main", "index": 0 }]] },
+    "Ready-to-send queue": { "main": [[{ "node": "Compose", "type": "main", "index": 0 }]] },
+    "Compose": { "main": [[{ "node": "Send weekly report", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "cv-fact-bank" },
+  "tags": []
+}
