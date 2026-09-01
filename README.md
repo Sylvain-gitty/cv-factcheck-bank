@@ -16,6 +16,7 @@ python render.py --pdf                # all CV variants -> out/ (HTML + PDF)
 python discover.py                    # fetch jobs -> jobs/*.yaml
 python rank.py --llm                  # score + re-rank -> out/digest.md
 python tailor.py jobs/<slug>.yaml --explain
+python letter.py jobs/<slug>.yaml     # draft -> you write the opening -> render
 ```
 
 PyYAML is the only dependency. No LaTeX, no headless browser, no API key, no build step.
@@ -242,6 +243,49 @@ When requirements go uncovered, `tailor.py` names them. That is not a tool failu
 **your skill gap for that job, stated precisely.** Aggregated over thirty applications it is
 a curriculum written by the market rather than by a syllabus.
 
+## Motivation letters
+
+`letter.py` builds a draft from the same facts `tailor.py` selected, so the letter and the
+CV argue from one body of evidence.
+
+**You write the opening, and the tool will not let you skip it.** The draft ships with the
+first paragraph as a marked TODO block, and every gate fails while it is there — the same
+mechanism as `status: draft` on facts. The thing you must do by hand is enforced by the
+data, not by your memory at 11pm.
+
+The reason is narrow. The first two sentences are the only part of a motivation letter with
+a high probability of being read carefully, and they are where a human voice is most
+detectable. A model writes competent, forgettable openings, and this is the one place in
+the pipeline where forgettable is fatal.
+
+| Gate | Catches |
+|---|---|
+| `opening_is_yours` | the TODO block still present |
+| `company_specific` | no proper noun from *this* posting in the first two sentences |
+| `no_dead_openers` | "I am writing to apply for…" and its relatives |
+| `genericness` | lexical similarity to a previous letter above 0.75 |
+| `numeric_integrity` | a number that appears in no cited fact |
+| `deny_list` | a forbidden claim that survived into prose |
+
+`--render` refuses to produce anything while a fatal gate is failing.
+
+**Company hooks come from the posting, never from a web fetch.** Guessing a homepage from a
+company name is fragile, and a wrong page produces a letter that is confidently specific
+about the wrong company — the worst failure this stage has. The posting is the one document
+you know is theirs.
+
+Extracting those hooks needed three passes. Matching capitalised spans harvested
+`Instead`, `Have` and `Some`, because every sentence starts with a capital — so
+sentence-initial spans are skipped, since a real name recurs mid-sentence. Spans built only
+from job-title words are dropped, because they restate the role rather than describe the
+company. And the generic-technology exclusion list is **`vocab.yaml` itself**: "Machine
+Learning" is not a company signal, and reusing the controlled vocabulary means that list
+maintains itself.
+
+Tested against a deliberately generic opening — *"I am writing to apply… 12 years of
+experience delivering value"* — five gates fired at once, including the fabricated `12`
+and the deny-listed phrase carrying it.
+
 ## Confirming facts
 
 ```bash
@@ -317,6 +361,7 @@ rank.py             score against archetypes, rank, digest, capture decisions
 validate.py         integrity, guardrails, coverage report
 render.py           bank -> HTML / Markdown / traceability
 tailor.py           tailor to one job posting, with checks
+letter.py           motivation letter: evidence, draft, gates, render
 confirm.py          the draft -> confirmed human gate
 ```
 
