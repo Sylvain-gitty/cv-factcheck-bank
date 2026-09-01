@@ -113,13 +113,23 @@ that should not have been there:
    so a job with no stated location passed unexamined. **Unknown is not the same as
    allowed**, and a filter that opts out when data is missing is a filter with a hole in
    it.
-3. **`remote` was treated as a blanket pass.** A remote posting that names Singapore or
-   the USA is remote *within that region*. Scopes that genuinely include Europe are now
-   listed explicitly.
+Together those two let a Volkswagen role in **Portugal** — on-site, no remote flag — rank
+third on a search restricted to Germany, the EU and remote.
 
-Together those three let a Volkswagen role in **Portugal** rank third on a search
-restricted to Germany, the EU and remote. Fixing them took the batch from 28 jobs to 17,
-and every one that left was one you could not have taken.
+A third "fix" was written and then **reverted**, and the reversal is the more useful
+lesson. It dropped any remote posting naming another country, on the theory that "remote —
+Singapore" means remote *within* Singapore. Sometimes it does. More often it means the
+company is in Singapore and hires remotely, which is perfectly workable from Berlin. The
+filter was conflating *where the company sits* with *who they can hire*, and throwing away
+good jobs for it.
+
+**A genuine restriction is a phrase, not a place name** — "must be based in", "authorized
+to work in the US", "only candidates located in". Those are what `drop_if_region_locked`
+matches. A country name on its own disqualifies nothing.
+
+Over-filtering costs more than it looks: a job wrongly dropped never appears, so you never
+learn it was dropped. Under-filtering shows up in the digest and costs thirty seconds.
+**When the two errors are that asymmetric, bias toward letting things through.**
 
 ### Judging a source
 

@@ -262,14 +262,10 @@ def passes_rules(job, rules) -> tuple[bool, str]:
             return False, "location not stated and not flagged remote"
     if allow and loc:
         remote = job.get("remote_flag") or "remote" in loc or "anywhere" in loc
-        # "Remote" is not a location. A remote role stating "Singapore" or "USA" is remote
-        # *within that region*, and treating the remote flag as a blanket pass was letting
-        # them all through. Scopes that genuinely include Europe are listed explicitly.
-        if remote and loc:
-            ok_scopes = [w.lower() for w in rules.get("remote_scopes_allow", [])]
-            named = [w.lower() for w in rules.get("remote_scopes_deny", [])]
-            if any(n in loc for n in named) and not any(o in loc for o in ok_scopes):
-                return False, f"remote but scoped to '{job.get('location')}'"
+        # A remote role naming another country is FINE -- it usually means the company is
+        # there and hires remotely, not that the role is restricted to it. An earlier
+        # version dropped on the country name alone and threw away perfectly workable jobs.
+        # Genuine restrictions say so in words, and `drop_if_region_locked` catches those.
         hit = remote and "remote" in allow
         hit = hit or any(a in loc for a in ("de", "germany", "deutschland") if "de" in allow)
         hit = hit or ("eu" in allow and any(

@@ -35,7 +35,20 @@ rules:
     - product owner
 
   # "Remote" on these boards usually means "remote, within the United States".
+  # Explicit restrictions only. These are the phrases that actually rule you out, as
+  # opposed to a country name that merely says where the company sits.
   drop_if_region_locked:
+    - "must be based in"
+    - "must be located in"
+    - "must reside in"
+    - "only candidates located in"
+    - "only candidates based in"
+    - "eligible to work in the us"
+    - "authorized to work in the us"
+    - "authorised to work in the us"
+    - "work authorization in the united states"
+    - "us citizens only"
+    - "requires us citizenship"
     - "us only"
     - "usa only"
     - "u.s. only"
@@ -50,12 +63,10 @@ rules:
     - "latam only"
     - "india only"
 
-  # A remote posting that names a region is remote *within* it. Without this, the remote
-  # flag was a blanket pass and Singapore and USA roles reached the digest.
-  remote_scopes_allow: [worldwide, anywhere, global, europe, emea, eu, germany, deutschland, berlin, remote]
-  remote_scopes_deny:
-    [usa, united states, u.s., canada, singapore, india, philippines, latam, apac,
-     brazil, australia, japan, china, mexico, argentina, nigeria, kenya, uk only]
+  # A remote job based in another country is fine -- you can take it from Berlin. Country
+  # names are NOT filtered: "Remote - Singapore" usually means the company is in Singapore
+  # and hires remotely. Only an explicit RESTRICTION disqualifies, and those are phrases,
+  # not place names -- see drop_if_region_locked below.
 
   drop_unknown_location: true      # unknown is not the same as allowed
 
