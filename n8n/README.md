@@ -51,12 +51,31 @@ cd n8n-automations/fact-bank && python bridge.py
 
 It prints the token. Get it again any time with `python bridge.py --print-token`.
 
-**2. Start n8n.** Docker Desktop needs to be running first — it is installed here but the
-daemon was stopped when this was written:
+**2. Start n8n.** Two options, and Node 26 is already installed here so the second is the
+lighter one.
+
+*Docker* — start Docker Desktop first; it is installed but the daemon was stopped when this
+was written:
 
 ```bash
 docker run -d --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n --add-host host.docker.internal:host-gateway docker.n8n.io/n8nio/n8n
 ```
+
+*Native* — no container, no image to maintain:
+
+```bash
+npx n8n
+```
+
+Running natively, n8n reaches the bridge at `http://127.0.0.1:899` rather than
+`host.docker.internal`. Change the URL in the four HTTP Request nodes, or set the whole
+base as a variable.
+
+**Native n8n could use Execute Command nodes and skip the bridge entirely — I would still
+not.** Execute Command inherits a shell whose working directory and Python resolution
+depend on how n8n was launched, which is a tedious class of failure to debug at 07:00. The
+HTTP boundary behaves identically whichever way you run n8n, and stays put if you later
+switch to Docker, move machines, or replace n8n with Task Scheduler.
 
 **3. Set three variables** in n8n (Settings → Variables), so no secret lives in the
 workflow JSON:
