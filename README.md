@@ -12,8 +12,9 @@ pip install pyyaml
 for f in profile entities facts vocab; do cp $f.example.yaml $f.yaml; done
 
 python validate.py                    # integrity + guardrails + coverage
-python render.py                      # all CV variants -> out/
-python tailor.py jobs/example-berlin-ds.yaml --explain
+python render.py --pdf                # all CV variants -> out/ (HTML + PDF)
+python discover.py                    # fetch jobs -> jobs/*.yaml
+python tailor.py jobs/<slug>.yaml --explain
 ```
 
 PyYAML is the only dependency. No LaTeX, no headless browser, no API key, no build step.
@@ -71,6 +72,33 @@ allow-list of permitted verbs fights you constantly and gets switched off. A nar
 deny-list of credit-claiming verbs fires rarely and only on the failure that matters.
 
 A check that cries wolf is worse than no check.
+
+## Finding jobs
+
+`discover.py` fetches from the sources in `sources.yaml`, normalises them to one schema,
+deduplicates, applies a free rules filter, and writes one YAML per job straight into the
+shape `tailor.py` consumes.
+
+**Every source is an official API, a published RSS feed, or an alert email you subscribed
+to. Nothing is scraped.** Not because scraping is hard, but because the downside is losing
+the account you are job-searching with, mid-search. `sources.yaml` records what was tested
+and what each site actually permits, including the eight that permit nothing — for those,
+subscribe to their alert emails and let an IMAP trigger read the mailbox. You use the
+service as designed, it survives redesigns that break scrapers, and it cannot get you
+banned.
+
+The filter is string matching, no model, no API call. On a real run it took 332 postings
+down to 7. Two things it taught, both the hard way:
+
+- **A positive gate is not optional.** Dropping what you do not want is not the same as
+  keeping what you do: with only negative rules, "remote" admits every job on earth, and
+  the first run returned MOT Testers, Shunters and a Handyperson.
+- **Match on word boundaries, never substrings.** `"ai" in title` matches ret**ai**l,
+  m**ai**ntenance, c**ai**ptain and m**ai**l. That is how a Bell Captain and a Rural Mail
+  Carrier reached the shortlist.
+
+Stage 2a is tuned for recall at zero cost, not precision. Its job is to make the survivors
+reviewable in thirty seconds — deciding which to pursue is yours.
 
 ## Tailoring to a job
 
@@ -177,6 +205,8 @@ entities.yaml       jobs, projects, degrees: dates and authorship live here
 facts.yaml          atomic claims, each attached to an entity
 vocab.yaml          controlled vocabulary for skill tags
 render_config.yaml  CV variants: archetype, section order, page budget, language
+sources.yaml        where jobs come from, and what each site permits
+discover.py         fetch, normalise, deduplicate, filter -> jobs/*.yaml
 validate.py         integrity, guardrails, coverage report
 render.py           bank -> HTML / Markdown / traceability
 tailor.py           tailor to one job posting, with checks

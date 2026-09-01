@@ -330,8 +330,10 @@ h2 {
   font-size: 9.2pt; text-transform: uppercase; letter-spacing: .09em;
   border-bottom: 1px solid #cfcfcf; padding-bottom: 2px;
   margin: 13px 0 7px; color: #000;
+  /* Never strand a section heading at the foot of a page with its content overleaf. */
+  break-after: avoid-page; page-break-after: avoid;
 }
-.entity { margin-bottom: 9px; page-break-inside: avoid; }
+.entity { margin-bottom: 9px; break-inside: avoid; page-break-inside: avoid; }
 /* Title and dates on one line; org and role on a quieter second line. Long project names
    and a role suffix on the same run wrapped badly and shoved the dates out of alignment. */
 .entity-head { display: flex; justify-content: space-between; gap: 14px; align-items: baseline; }
@@ -468,6 +470,33 @@ PAGE = dict(
 )
 
 
+BROWSERS = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    "/usr/bin/google-chrome", "/usr/bin/chromium",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+]
+
+
+def to_pdf(html_path: Path, pdf_path: Path) -> bool:
+    """Print a rendered variant with headless Chrome/Edge.
+
+    Convenience only -- Ctrl+P from a browser produces the same file. Worth having
+    because the PDF is the artefact that actually gets sent, and printing it is where
+    page-break defects surface: they are invisible in the HTML.
+    """
+    import subprocess
+    exe = next((b for b in BROWSERS if Path(b).exists()), None)
+    if not exe:
+        return False
+    subprocess.run([exe, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
+                    f"--print-to-pdf={pdf_path}", html_path.resolve().as_uri()],
+                   capture_output=True, timeout=120)
+    return pdf_path.exists()
+
+
 def page_estimate(bank, sel, cfg) -> float:
     """Estimated A4 pages. Calibrated, not guessed -- see PAGE above."""
     import math
@@ -546,6 +575,8 @@ def main() -> int:
     ap.add_argument("--include-drafts", action="store_true",
                     help="render unconfirmed facts, watermarked DRAFT")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--pdf", action="store_true",
+                    help="also print each variant to PDF via headless Chrome/Edge")
     args = ap.parse_args()
 
     bank = load_bank()
@@ -588,6 +619,13 @@ def main() -> int:
                         "draft": cfg["include_drafts"], "bullets": sel.trace},
                        indent=2, ensure_ascii=False), encoding="utf-8")
         any_output = True
+
+        if args.pdf:
+            owner = (bank["profile"].get("owner", {}).get("name") or "cv").replace(" ", "_")
+            pdf = OUT / f"{owner}_CV_{v['id']}.pdf"
+            src = OUT / (v['id'] + '.html')
+            ok = to_pdf(src, pdf)
+            print(f"  {'->' if ok else 'no browser found for'} {pdf.name}")
 
         blocked = [d for d in sel.dropped if "BLOCKED" in d]
         print(f"  {sel.total} bullets across {len(sel.by_entity)} entities "

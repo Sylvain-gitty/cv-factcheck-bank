@@ -17,9 +17,10 @@ NOTES.private.md
 # Rendered output: CVs, traces, check reports
 out/
 
-# Real job postings you are applying to
+# Real job postings you are applying to, and the dedup history
 jobs/*.yaml
 !jobs/example-*.yaml
+.state/
 
 # LLM selector artefacts
 llm_selection.json

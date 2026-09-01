@@ -1,0 +1,231 @@
+# sources.yaml — Plan 01 Stage 1: where jobs come from.
+#
+# Every source below was tested on 2026-09-01. Status is what the server actually returned,
+# not what a blog post claims. Re-test before assuming any of it still holds.
+#
+# THE RULE: use the access route the site offers. An official API, a published RSS feed, or
+# an alert email you subscribed to. Not scraping. Not because scraping is hard, but because
+# the downside is losing the account you are job-searching with, in the middle of a job
+# search. That trade is never worth it.
+
+rules:
+  # Stage 2a — free deterministic filtering, applied before anything expensive.
+  # Kills the majority of postings at zero cost. Edit these weekly; they are meant to churn.
+  # POSITIVE gate first. Dropping what you do not want is not the same as keeping what you
+  # do: the first real run returned MOT Testers, Shunters and a Handyperson, because
+  # "remote" on its own admits every job on the planet. A title must earn its way in.
+  # Matched on WORD BOUNDARIES, so "ai" no longer hits retail/maintenance/captain/mail.
+  require_any_in_title:
+    - data
+    - machine learning
+    - ml
+    - ai
+    - analyst
+    - analytics
+    - scientist
+    - science
+    - python
+    - nlp
+    - llm
+    - research
+    - statistics
+    - quantitative
+    - bioinformatics
+    - product manager
+    - product owner
+
+  # "Remote" on these boards usually means "remote, within the United States".
+  drop_if_region_locked:
+    - "us only"
+    - "usa only"
+    - "u.s. only"
+    - "united states only"
+    - "must be located in the us"
+    - "must reside in the united states"
+    - "authorized to work in the us"
+    - "canada only"
+    - "uk only"
+    - "australia only"
+    - "philippines"
+    - "latam only"
+    - "india only"
+
+  countries_allow: [DE, EU, REMOTE]
+  languages_allow: [en, de]
+  drop_title_contains:
+    - no experience required     # data-labelling gig work, not a data role
+    - senior
+    - principal
+    - staff
+    - lead
+    - head of
+    - director
+    - vp
+    - "10+ years"
+    - "8+ years"
+    - werkstudent
+    - praktikum
+    - intern
+  drop_description_contains:
+    - security clearance
+    - unpaid
+    - commission only
+  min_description_chars: 200      # a 40-word posting is an agency stub
+
+
+# ---------------------------------------------------------------------------
+# TIER 1 — verified working, automated access permitted
+# ---------------------------------------------------------------------------
+sources:
+
+  - id: remoteok
+    label: RemoteOK
+    type: json_api
+    enabled: true
+    url: https://remoteok.com/api
+    # Verified 2026-09-01: HTTP 200, ~411 KB JSON.
+    # Their payload carries its own licence line: "Please link back (with follow)".
+    # If you ever publish anything derived from this feed, honour that.
+    attribution: "Jobs via RemoteOK — https://remoteok.com"
+    skip_first_record: true        # element 0 is the licence notice, not a job
+    map:
+      id: id
+      title: position
+      company: company
+      location: location
+      url: url
+      posted_at: date
+      description: description
+      salary_raw: salary_max
+      tags: tags
+    defaults: {remote_flag: true, language: en}
+
+  - id: workingnomads
+    label: Working Nomads
+    type: json_api
+    enabled: true
+    url: https://www.workingnomads.com/api/exposed_jobs/
+    # Verified 2026-09-01: HTTP 200, ~196 KB JSON.
+    map:
+      id: id
+      title: title
+      company: company_name
+      location: location
+      url: url
+      posted_at: pub_date
+      description: description
+      tags: category_name
+    defaults: {remote_flag: true, language: en}
+
+  - id: berlinstartupjobs
+    label: Berlin Startup Jobs
+    type: rss
+    enabled: true
+    url: https://berlinstartupjobs.com/feed/
+    # Verified 2026-09-01: HTTP 200, valid RSS 2.0.
+    # Only ~15 KB per fetch, so it returns recent postings only. Run it daily or you
+    # will miss things -- this is the source most sensitive to schedule.
+    defaults: {location: "Berlin, Germany", remote_flag: false, language: en}
+
+  - id: arbeitnow
+    label: Arbeitnow
+    type: json_api
+    enabled: true
+    url: https://www.arbeitnow.com/api/job-board-api
+    # Verified 2026-09-01: HTTP 200, ~1.4 MB JSON. Documented free API, German market.
+    # Not on your list, but it covers the German-market gap the blocked sites leave.
+    root: data
+    map:
+      id: slug
+      title: title
+      company: company_name
+      location: location
+      url: url
+      posted_at: created_at
+      description: description
+      tags: tags
+    defaults: {language: de}
+
+  - id: bundesagentur
+    label: Bundesagentur für Arbeit — Jobsuche
+    type: json_api
+    enabled: false
+    # DISABLED until you register. Free, official, and by far the best German coverage.
+    # Register at https://jobsuche.api.bund.dev/ for a client ID, then set
+    # BA_CLIENT_ID in the environment and flip enabled: true.
+    url: https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs
+    auth_env: BA_CLIENT_ID
+    auth_header: X-API-Key
+    params: {wo: Berlin, umkreis: 50, size: 100}
+    root: stellenangebote
+    map:
+      id: refnr
+      title: titel
+      company: arbeitgeber
+      location: arbeitsort
+      url: externeUrl
+      posted_at: aktuelleVeroeffentlichungsdatum
+      description: stellenbeschreibung
+    defaults: {language: de}
+
+
+# ---------------------------------------------------------------------------
+# TIER 2 — automated access NOT permitted or NOT available
+# ---------------------------------------------------------------------------
+#
+# All tested 2026-09-01. Do not "fix" these by scraping them.
+#
+#   indeed.de            robots.txt disallows job paths. Publisher API long discontinued.
+#                        Actively blocks automation and has litigated over it.
+#   stepstone.de         robots.txt disallows /jobs/ paths.
+#   xing.com             robots.txt carries a blanket "Disallow: /". Job API deprecated.
+#   jobleads.com         robots.txt disallows /jobs/global/.
+#   welcometothejungle   HTTP 403 on the API and on robots.txt itself.
+#   justjoin.it          public API returns 503 / 404. No working endpoint.
+#   relocate.me          no feed found (no /jobs.rss, no /feed).
+#   eurojobs.com         no feed found.
+#
+# THE ROUTE THAT WORKS FOR ALL OF THEM: subscribe to their job alert emails.
+#
+# You use the service exactly as designed, they push matches to you, and n8n reads the
+# mailbox. It is legal, it survives redesigns that break scrapers, and it cannot get your
+# account banned. The catch is that you only see what their matching decides to send --
+# so make the alert criteria broad and let Stage 2 do the filtering, rather than
+# pre-filtering in their UI.
+#
+# Setup:
+#   1. Create a dedicated address or a +tag: fossiersylvain+jobs@outlook.fr
+#   2. Subscribe to alerts on each site above with deliberately broad criteria
+#   3. In n8n: IMAP Email trigger -> filter by sender -> parse -> same schema as below
+#
+# `email_alert` sources are declared here so the pipeline knows about them, but
+# discover.py does not fetch them -- n8n owns that trigger.
+email_alert_sources:
+  - {id: indeed,      label: Indeed.de,             sender_contains: indeed.com}
+  - {id: stepstone,   label: StepStone.de,          sender_contains: stepstone.de}
+  - {id: xing,        label: XING,                  sender_contains: xing.com}
+  - {id: jobleads,    label: JobLeads,              sender_contains: jobleads.com}
+  - {id: wttj,        label: Welcome to the Jungle, sender_contains: welcometothejungle.com}
+  - {id: justjoin,    label: justjoin.it,           sender_contains: justjoin.it}
+  - {id: relocateme,  label: Relocate.me,           sender_contains: relocate.me}
+  - {id: eurojobs,    label: EuroJobs,              sender_contains: eurojobs.com}
+
+
+# ---------------------------------------------------------------------------
+# TIER 0 — the source worth more than all of the above
+# ---------------------------------------------------------------------------
+#
+# Company career boards. Greenhouse, Lever, Ashby and Personio all expose public JSON per
+# company, and using it is entirely legitimate -- it is how their embed widgets work.
+#
+# This is the tier juniors skip and it is the best one: you choose the 30-50 employers you
+# actually want, and you see their openings the day they post, before any aggregator
+# indexes them. Higher signal and far less noise than every board above combined.
+#
+# Add companies here as you identify them. Templates:
+#   https://boards-api.greenhouse.io/v1/boards/<token>/jobs?content=true
+#   https://api.lever.co/v0/postings/<token>?mode=json
+#   https://api.ashbyhq.com/posting-api/job-board/<token>
+#   https://<company>.jobs.personio.de/xml
+company_boards: []
+  # - {id: gh-example, label: Example GmbH, type: greenhouse, token: examplegmbh}
