@@ -1,0 +1,150 @@
+# content-sources.yaml — Plan 02 A0: what may become an article, and under whose name.
+#
+# ============================================================================
+# THIS FILE IS AN ALLOW-LIST. IT IS NEVER A FOLDER SCAN.
+# ============================================================================
+#
+# In August 2026 nine CV facts were seeded from `academic_research_agent` and
+# `data_sci_virtual_coaches` on the assumption that a directory sitting in a personal
+# Bootcamp folder was personal work. Both belong to Warren Fauvel — 378 commits,
+# proprietary licence, all rights reserved. One of the facts claimed sole authorship of
+# the application.
+#
+# It was caught before anything was sent. Published as an article it would not have been.
+#
+# The rule that follows: **authorship comes from `git log` and the LICENSE, never from a
+# README.** A README describes software; it does not say who wrote it. Before adding any
+# repo below:
+#
+#     git -C <repo> log --format=%an | sort | uniq -c | sort -rn
+#     head -5 <repo>/LICENSE
+#
+# `authorship` and `share` are inherited by every draft and every check downstream.
+
+repos:
+  - id: tiri
+    label: TIRI — relevance screening for academic literature
+    path: ../../TIRI---The-Data-science-project
+    url: https://github.com/Sylvain-gitty/TIRI---The-Data-science-project
+    authorship: co-authored
+    collaborators: ["Warren Fauvel"]
+    share: ~27%          # ~50 of ~187 commits. Say "we" throughout; never "I built".
+    entity: ent-tiri     # links to the fact bank, so evidence resolves to verified facts
+    lens: [ds]
+    publishable: true
+    evidence_files:
+      - README.md
+      - CONTEXT.md
+      - data/processed/README.md
+    figures: reports/
+
+  - id: airpollution
+    label: Urban air pollution — PM2.5 from satellite data
+    path: ../../DS-airpollutionproject
+    url: https://github.com/Sylvain-gitty/DS-airpollutionproject
+    authorship: team
+    collaborators: [Andrea, Ghada]
+    share: one of three
+    entity: ent-airpollution
+    lens: [ds]
+    publishable: true
+    evidence_files: [README.md]
+    figures: images/
+
+  - id: cvfactbank
+    label: cv-fact-bank — the tooling behind this job search
+    path: .
+    url: https://github.com/Sylvain-gitty/cv-factcheck-bank
+    authorship: sole
+    collaborators: []
+    share: >
+      Design and direction are Sylvain's; implementation was AI-assisted. Any article
+      about this must say so plainly in the piece, not only in a footnote.
+    entity: ent-n8n-automation
+    lens: [pm, ds]
+    publishable: true
+    evidence_files: [README.md, n8n/README.md]
+    figures: null
+
+
+# ============================================================================
+# DELIBERATELY ABSENT — do not add these
+# ============================================================================
+#
+#   academic_research_agent    Warren Fauvel. Proprietary licence, all rights reserved.
+#                              Shared as TIRI's data source. NOT publishable, in any form,
+#                              including as "a project I worked with".
+#   data_sci_virtual_coaches   Warren Fauvel. Same.
+#   Expected-Throwing-Value    Braden Eberhard, Jacob Miller, Nate Sandholz. Cloned to study.
+#   developer-roadmap,
+#   public-apis                Cloned open source.
+#   the ~20 DS-* repos         neuefische workshop material. Curriculum completed, not work
+#                              authored. Fine as supporting colour inside a piece — "I had
+#                              done the textbook RAG workshop, which is why the failure
+#                              surprised me" — never as a subject.
+
+
+# ============================================================================
+# VOICE
+# ============================================================================
+# Fed to the drafting prompt, and the ban-list is checked mechanically afterwards.
+voice:
+  # Excerpts of your own writing. The tone to match: direct, comfortable stating what did
+  # not work, allergic to marketing language.
+  samples:
+    - "The interesting part is not the accuracy number."
+    - >
+      The obvious move is to embed each paper and train a classifier. We did that, and it
+      scored well — right up until we tested it on a research question it hadn't seen.
+    - >
+      Two honest caveats we'd rather state than bury.
+
+  ban:
+    - delve
+    - "in today's fast-paced"
+    - leverage
+    - game-changer
+    - unlock
+    - "it's important to note"
+    - "it is important to note"
+    - seamless
+    - robust solution
+    - cutting-edge
+    - "revolutionize"
+    - "in conclusion"
+    - "dive into"
+    - "at the end of the day"
+    - "needless to say"
+
+  rules:
+    - No section shorter than a paragraph.
+    - No bullet list longer than five items.
+    - Define a term the first time it appears.
+    - Every number traces to the evidence pack. No exceptions.
+    - Say "we" on co-authored and team work. Every time.
+
+
+# ============================================================================
+# POSITIONING
+# ============================================================================
+# Primary goal is hiring signal; the consulting brand is built quietly underneath and the
+# offer stays latent while job hunting.
+#
+# THE RULE THAT SERVES BOTH: write about the problem, not about yourself.
+#
+#   not  "What I learned about imbalanced classification in my bootcamp capstone"
+#   not  "How I help R&D teams screen literature"
+#   but  "Why F1 is the wrong metric for literature screening — and what we used instead"
+#
+# Problem-centric titles are audience-agnostic. A hiring manager sees someone who thinks
+# clearly; a buyer sees someone who understands their problem; neither is being sold to.
+positioning:
+  cadence_days: 14           # one pillar a fortnight. The job search wins ties.
+  target_words: [1200, 2000]
+  self_centric_openers:      # checked against the title
+    - "what i learned"
+    - "my journey"
+    - "how i built"
+    - "my experience with"
+    - "a beginner's guide"
+    - "how i help"

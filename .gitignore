@@ -20,6 +20,7 @@ out/
 
 # Your letters, the jobs you are applying to, and the dedup history
 letters/
+articles/
 applications.csv
 answers.yaml
 jobs/*.yaml

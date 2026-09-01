@@ -420,6 +420,45 @@ CV, writing the letter opening and submitting stay at your desk — building an 
 for those would turn three acts of judgement into three clicks, which is the failure this
 design exists to prevent.
 
+## Writing about the work (Plan 02)
+
+`article.py` covers the pillar path: evidence pack, draft skeleton, gates, render.
+`content-sources.yaml` is the allow-list.
+
+**Sources are an allow-list, never a folder scan.** Nine CV facts were once seeded from a
+repo that turned out to belong to someone else — proprietary licence, all rights reserved —
+on the assumption that a directory in a personal folder was personal work. It was caught
+before anything was sent. Published as an article it would not have been. Every repo
+carries `authorship`, `collaborators` and `share`, and those travel with the draft into the
+checks.
+
+**The evidence pack is built without a model, ever.** Every number an article may use is
+extracted by code from a confirmed fact or a declared repo file, with its source recorded.
+A model summarising a notebook will occasionally produce a plausible number that is not in
+it, and a plausible-but-wrong metric is invisible to your reader and glaring to the one
+person you wanted to impress. TIRI's pack: 366 values, 24 of them from confirmed facts.
+
+**You write the introduction and the conclusion.** Both ship as TODO blocks and gates fail
+while they are present. They are the two sections people actually read and where voice is
+most visible; the middle of a well-grounded article can be assembled, an opening cannot.
+
+| Gate | Catches |
+|---|---|
+| `intro_is_yours` / `conclusion_is_yours` | TODO blocks still present |
+| `problem_centric_title` | "How I built…", "What I learned…" — about you, not the problem |
+| `numeric_integrity` | any figure not in the evidence pack |
+| `ban_list` | delve, leverage, seamless, game-changer, "it is important to note" |
+| `shared_work_voice` | first-person singular on co-authored or team work |
+
+Tested against a deliberately bad draft — *"How I built a ranking model… 0.947 ROC-AUC…
+37% improvement… 9,412 papers"* — four gates fired at once, including all three fabricated
+numbers and seven first-person uses on joint work.
+
+**Not built: Pipeline B**, the derivative and distribution half. Atomising a published
+piece into LinkedIn posts and a newsletter is safe to automate *because* it only compresses
+text that already cleared these gates — but it is worth nothing until there is a first
+article to compress.
+
 ## Privacy
 
 `.gitignore` excludes `profile.yaml`, `entities.yaml`, `facts.yaml`, `vocab.yaml`,
@@ -447,6 +486,8 @@ package.py          assemble a ready-to-send application; refuses to send it
 answers.yaml        screening-question answer bank
 track.py            application log, funnel, response rates with intervals
 bridge.py           loopback HTTP API over the stages, for n8n or cron
+content-sources.yaml  Plan 02 allow-list: what may become an article, and whose it is
+article.py          evidence pack, draft, gates, render
 confirm.py          the draft -> confirmed human gate
 ```
 
