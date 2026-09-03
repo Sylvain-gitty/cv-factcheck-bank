@@ -127,7 +127,7 @@ def checklist(slug, job, bank, answers) -> str:
         "weworkremotely": "We Work Remotely", "himalayas": "Himalayas",
         "jobicy": "Jobicy", "workingnomads": "Working Nomads",
         "landingjobs": "Landing.jobs", "workable-berlin": "Workable",
-        "themuse": "The Muse", "manual": "directly",
+        "themuse": "The Muse",
     }
     for a in answers:
         ans = a.get("answer")
@@ -136,8 +136,12 @@ def checklist(slug, job, bank, answers) -> str:
             if src.startswith(("greenhouse-", "ashby-", "lever-", "personio-")):
                 ans = (f"On your own careers page — I follow {job.get('company') or 'your'} "
                        f"openings directly.")
+            elif src == "manual":
+                ans = "I came across the posting directly."
+            elif src in SOURCE_NAMES:
+                ans = f"Via {SOURCE_NAMES[src]}."
             else:
-                ans = f"Via {SOURCE_NAMES.get(src, src or 'a job board')}."
+                ans = "Via an online job board."
         if ans == "PER_JOB":
             body = "_write this one fresh — a stored answer to \"why us\" is the generic "
             body += "letter problem wearing a different hat_"
