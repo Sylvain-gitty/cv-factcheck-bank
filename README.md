@@ -25,6 +25,10 @@ python bridge.py                      # local API for n8n (optional)
 PyYAML is the only dependency. No LaTeX, no headless browser, no API key, no build step.
 Output is self-contained HTML with print CSS — open it and Ctrl+P to PDF.
 
+**New here?** Read [ONBOARDING.md](ONBOARDING.md) first — it explains the whole workflow
+from scratch, why each piece is built the way it is, and how to run it without any prior
+context.
+
 ---
 
 ## The idea
