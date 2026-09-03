@@ -122,8 +122,22 @@ def checklist(slug, job, bank, answers) -> str:
         "Paste these; do not retype them. `PER_JOB` means write it fresh for this posting.",
         "",
     ]
+    SOURCE_NAMES = {
+        "arbeitnow": "the Arbeitnow job board", "remoteok": "RemoteOK",
+        "weworkremotely": "We Work Remotely", "himalayas": "Himalayas",
+        "jobicy": "Jobicy", "workingnomads": "Working Nomads",
+        "landingjobs": "Landing.jobs", "workable-berlin": "Workable",
+        "themuse": "The Muse", "manual": "directly",
+    }
     for a in answers:
         ans = a.get("answer")
+        if ans == "AUTO" and a["id"] == "heard_about":
+            src = str(job.get("source") or "")
+            if src.startswith(("greenhouse-", "ashby-", "lever-", "personio-")):
+                ans = (f"On your own careers page — I follow {job.get('company') or 'your'} "
+                       f"openings directly.")
+            else:
+                ans = f"Via {SOURCE_NAMES.get(src, src or 'a job board')}."
         if ans == "PER_JOB":
             body = "_write this one fresh — a stored answer to \"why us\" is the generic "
             body += "letter problem wearing a different hat_"
