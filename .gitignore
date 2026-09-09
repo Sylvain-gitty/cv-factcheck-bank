@@ -35,3 +35,7 @@ prompt.txt
 __pycache__/
 *.pyc
 .venv/
+
+# throwaway analysis scripts (use the scratchpad instead)
+_*.py
+_*.json
