@@ -492,6 +492,11 @@ def to_pdf(html_path: Path, pdf_path: Path) -> bool:
     if not exe:
         return False
     import time
+    # RESOLVE FIRST. Chrome/Edge resolve --print-to-pdf against their OWN working
+    # directory, not the caller's, so a relative path silently writes the file somewhere
+    # else and to_pdf reports failure while the browser reports success.
+    pdf_path = Path(pdf_path).resolve()
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
     before = pdf_path.stat().st_mtime if pdf_path.exists() else 0
     subprocess.run([exe, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
                     f"--print-to-pdf={pdf_path}", html_path.resolve().as_uri()],

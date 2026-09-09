@@ -6,6 +6,7 @@
     python discover.py --dry-run          # show what would be written, write nothing
     python discover.py --list             # sources and their status
     python discover.py --reset-seen       # forget dedup history
+    python discover.py --url <posting>    # ingest one posting you found yourself
 
 Writes one YAML per surviving job into jobs/, in exactly the shape tailor.py consumes:
 
@@ -311,6 +312,117 @@ ADAPTERS = {"json_api": from_json_api, "rss": from_rss,
 
 # --------------------------------------------------------------------------- filtering
 
+
+# --------------------------------------------------------------- single posting by URL
+#
+# You will find jobs outside the configured sources -- someone sends you a link, or you
+# spot one on a company site. This ingests one posting into the same job format the rest
+# of the pipeline consumes, so nothing downstream needs to care where it came from.
+#
+# It uses each ATS's own public posting API rather than scraping the rendered page: the
+# JSON is stable, structured, and intended to be read. Scraping HTML would break on the
+# next redesign and gives you a worse description.
+
+URL_PATTERNS = [
+    # (regex over the URL, ats, api template)
+    (r"jobs\.eu\.lever\.co/([^/]+)/([0-9a-f-]{16,})",
+     "lever", "https://api.eu.lever.co/v0/postings/{a}/{b}"),
+    (r"jobs\.lever\.co/([^/]+)/([0-9a-f-]{16,})",
+     "lever", "https://api.lever.co/v0/postings/{a}/{b}"),
+    (r"(?:job-boards|boards)\.greenhouse\.io/([^/]+)/jobs/(\d+)",
+     "greenhouse", "https://boards-api.greenhouse.io/v1/boards/{a}/jobs/{b}?questions=false"),
+    (r"jobs\.ashbyhq\.com/([^/]+)/([0-9a-f-]{16,})",
+     "ashby", "https://api.ashbyhq.com/posting-api/job-board/{a}"),
+]
+
+
+def from_url(url: str) -> dict | None:
+    """One posting, normalised. Returns None if the URL is not a recognised ATS."""
+    for pattern, ats, api in URL_PATTERNS:
+        m = re.search(pattern, url)
+        if not m:
+            continue
+        a, b = m.group(1), m.group(2)
+        raw = json.loads(fetch(api.format(a=a, b=b), timeout=45))
+
+        if ats == "lever":
+            c = raw.get("categories") or {}
+            body = " ".join(
+                [raw.get("descriptionPlain") or ""]
+                + [f"{l.get('text', '')}: {strip_html(l.get('content'))}"
+                   for l in (raw.get("lists") or [])]
+                + [raw.get("additionalPlain") or ""])
+            return {"title": raw.get("text"), "company": a,
+                    "location": c.get("location"), "url": raw.get("hostedUrl") or url,
+                    "posted_at": raw.get("createdAt"), "description": " ".join(body.split()),
+                    "tags": c.get("team"),
+                    "remote_flag": str(raw.get("workplaceType", "")).lower() == "remote"}
+
+        if ats == "greenhouse":
+            return {"title": raw.get("title"), "company": raw.get("company_name") or a,
+                    "location": dig(raw, "location"), "url": raw.get("absolute_url") or url,
+                    "posted_at": raw.get("updated_at"),
+                    "description": strip_html(raw.get("content")),
+                    "tags": ", ".join(d.get("name", "") for d in (raw.get("departments") or []))}
+
+        if ats == "ashby":
+            # Ashby has no single-posting endpoint; pull the board and match the id.
+            job = next((j for j in raw.get("jobs", [])
+                        if b in str(j.get("jobUrl", "")) or b == str(j.get("id"))), None)
+            if not job:
+                return None
+            return {"title": job.get("title"), "company": a,
+                    "location": job.get("location"), "url": job.get("jobUrl") or url,
+                    "posted_at": job.get("publishedAt"),
+                    "description": job.get("descriptionPlain")
+                    or strip_html(job.get("descriptionHtml")),
+                    "tags": job.get("department"),
+                    "remote_flag": bool(job.get("isRemote"))}
+    return None
+
+
+def ingest_url(url: str, rules: dict) -> int:
+    job = from_url(url)
+    if job is None:
+        log(f"\nNot a recognised ATS URL: {url}")
+        log("Supported: Lever (jobs.lever.co, jobs.eu.lever.co), Greenhouse")
+        log("(job-boards.greenhouse.io) and Ashby (jobs.ashbyhq.com).")
+        log("For anything else, write the job YAML by hand -- see jobs/example-berlin-ds.yaml.")
+        return 1
+
+    job["source"] = "url"
+    job["job_id"] = job_key(job.get("company"), job.get("title"), job.get("location"))
+    slug = slugify(job.get("company"), job.get("title"))
+
+    # A job you asked for by name is NOT filtered out -- you have already made that call,
+    # and silently dropping it would be the tool overruling you. But it still reports what
+    # the filter would have said, because that is information you want before applying.
+    ok, why = passes_rules(job, rules)
+    log(f"\n{job.get('title')}  —  {job.get('company')}")
+    log(f"  {job.get('location') or 'location unstated'}  ·  {job.get('url')}")
+    log(f"  {len(job.get('description') or '')} chars of description")
+    log(f"  filter: {'would pass' if ok else 'WOULD HAVE BEEN DROPPED — ' + why}")
+
+    doc = {"title": job["title"], "company": job.get("company"),
+           "location": job.get("location"), "url": job.get("url"),
+           "source": "url", "language": "en",
+           "posted": str(job.get("posted_at") or ""),
+           "salary_raw": None, "tags": job.get("tags"),
+           "description": job.get("description", "")}
+    (JOBS / f"{slug}.yaml").write_text(
+        yaml.safe_dump(doc, allow_unicode=True, sort_keys=False,
+                       default_flow_style=False, width=95), encoding="utf-8")
+
+    seen = prune_seen(load_seen())
+    seen[job["job_id"]] = {"first_seen": datetime.now(timezone.utc).isoformat(),
+                           "source": "url", "slug": slug}
+    SEEN.write_text(json.dumps(seen, indent=2), encoding="utf-8")
+
+    log(f"\n  -> jobs/{slug}.yaml")
+    log(f"\nNext:  python tailor.py jobs/{slug}.yaml --explain")
+    return 0
+
+
 def passes_rules(job, rules) -> tuple[bool, str]:
     title = (job.get("title") or "").lower()
     desc = (job.get("description") or "").lower()
@@ -397,6 +509,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--reset-seen", action="store_true")
+    ap.add_argument("--url", metavar="URL",
+                    help="ingest one posting from a Lever/Greenhouse/Ashby URL")
     ap.add_argument("--limit", type=int, default=40, help="max new jobs written per run")
     args = ap.parse_args()
 
@@ -422,6 +536,9 @@ def main() -> int:
             mark = "on " if b.get("enabled", True) else "off"
             log(f"  [{mark}] {b['token']:<18} {b['type']:<11} {b['label']}")
         return 0
+
+    if args.url:
+        return ingest_url(args.url, cfg.get("rules", {}))
 
     if args.reset_seen and SEEN.exists():
         SEEN.unlink()

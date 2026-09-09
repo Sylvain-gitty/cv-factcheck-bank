@@ -66,6 +66,21 @@ variants:
     max_total_facts: 9
     sections: [profile, skills, experience, projects, education, languages]
 
+  # For roles that sit BETWEEN archetypes. rank.py already identifies them: when the top
+  # two archetype scores are within 30% it prints the label as ambiguous. On those jobs the
+  # single-archetype variants both underperform -- the ds variant cannot see the leadership
+  # facts (tagged technical-pm) and the pm variant cannot see the modelling ones. This
+  # variant drops the archetype filter and lets set-cover choose from the whole bank.
+  #
+  # It is NOT a general-purpose CV. Used on a role that clearly wants one archetype it
+  # dilutes the pitch, which is exactly what the archetype filter exists to prevent.
+  - id: span
+    label: Spanning role (no archetype filter)
+    archetype: null
+    page_target: 2
+    max_total_facts: 11
+    sections: [profile, skills, experience, projects, education, languages]
+
   # German-language version of the DS variant. Uses claim_de where present and reports
   # every fact that falls back to English so you can spot the gaps.
   - id: ds-de
