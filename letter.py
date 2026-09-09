@@ -255,6 +255,22 @@ def sibling_signals(job: dict, bank, jobs_dir: Path) -> list[str]:
     return out[:10]
 
 
+def all_signals(job, bank) -> list[str]:
+    """The hook set the draft offers AND the check validates against.
+
+    These must be the same list. They were not: the draft borrowed hooks from sibling
+    postings when a job carried no company section, while run_checks looked only at the
+    posting's own text -- so the tool proposed "Enpal.One", the writer used it, and the
+    gate rejected it as not company-specific.
+    """
+    own = company_signals(job, bank)
+    if not any(BRANDISH.search(x) for x in own):
+        borrowed = [x for x in sibling_signals(job, bank, HERE / "jobs") if x not in own]
+        borrowed.sort(key=lambda x: (not bool(BRANDISH.search(x)), x))
+        return borrowed + own
+    return own
+
+
 def select_facts(bank, job, variant_id="ds", top=6):
     """Reuse Stage 3's retrieval so the letter and the CV argue from the same evidence."""
     rc = R.load("render_config.yaml")
@@ -379,7 +395,7 @@ def run_checks(slug, text, job, bank):
         "you have written the opening" if "OPENING: WRITE THIS YOURSELF" not in text
         else "the TODO block is still there -- this is the one thing you must do by hand")
 
-    sigs = company_signals(job, bank)
+    sigs = all_signals(job, bank)
     hit = next((s for s in sigs if s.lower() in first_two.lower()), None)
     add("company_specific", bool(hit),
         f"opening names '{hit}'" if hit
@@ -505,17 +521,9 @@ def main() -> int:
     facts = select_facts(bank, job, args.variant)
     if not facts:
         sys.exit("no confirmed facts matched this posting — run validate.py")
-    signals = company_signals(job, bank)
-    borrowed = []
-    # Borrow on QUALITY, not count. This posting produced thirteen hooks and not one of
-    # them named the company -- "Senior", "ERP", "Snowflake" are the role's vocabulary.
-    # A brand-shaped token (Enpal.One, Metrify) is the thing worth opening a letter with,
-    # so the trigger is "none of my own hooks look like a product name".
-    if not any(BRANDISH.search(x) for x in signals):
-        borrowed = [x for x in sibling_signals(job, bank, HERE / "jobs") if x not in signals]
-        # Brand-shaped ones first: they are what the opening actually needs.
-        borrowed.sort(key=lambda x: (not bool(BRANDISH.search(x)), x))
-        signals = borrowed + signals
+    own = company_signals(job, bank)
+    signals = all_signals(job, bank)
+    borrowed = [x for x in signals if x not in own]
 
     body = None
     if args.llm:
