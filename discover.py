@@ -81,6 +81,11 @@ def strip_html(text) -> str:
     text = unescape(str(text))          # &lt;p&gt; -> <p>, before any tag stripping
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</p>", "\n\n", text, flags=re.I)
+    # <li> IS the requirement structure. Collapsing it into prose destroyed the only
+    # signal extract_requirements has, and boilerplate sentences got picked up as
+    # requirements instead. Keep bullets as bullets.
+    text = re.sub(r"<li[^>]*>", "\n- ", text, flags=re.I)
+    text = re.sub(r"</(?:li|ul|ol|h[1-6]|div|tr)>", "\n", text, flags=re.I)
     text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"[ \t]+", " ", unescape(text)).strip()
 
@@ -347,14 +352,19 @@ def from_url(url: str) -> dict | None:
 
         if ats == "lever":
             c = raw.get("categories") or {}
-            body = " ".join(
-                [raw.get("descriptionPlain") or ""]
-                + [f"{l.get('text', '')}: {strip_html(l.get('content'))}"
-                   for l in (raw.get("lists") or [])]
-                + [raw.get("additionalPlain") or ""])
+            # Newline-joined, not space-joined: the bullets ARE the requirements and
+            # tailor.py extracts them by looking for lines that start with one.
+            parts = [raw.get("descriptionPlain") or ""]
+            for l in raw.get("lists") or []:
+                heading = l.get("text", "")
+                items = strip_html(l.get("content"))
+                parts.append("\n" + heading + "\n" + items)
+            parts.append(raw.get("additionalPlain") or "")
+            body = "\n".join(parts)
             return {"title": raw.get("text"), "company": a,
                     "location": c.get("location"), "url": raw.get("hostedUrl") or url,
-                    "posted_at": raw.get("createdAt"), "description": " ".join(body.split()),
+                    "posted_at": raw.get("createdAt"),
+                    "description": re.sub(r"\n{3,}", "\n\n", body).strip(),
                     "tags": c.get("team"),
                     "remote_flag": str(raw.get("workplaceType", "")).lower() == "remote"}
 

@@ -130,6 +130,24 @@ def generic_tech_terms(bank) -> set[str]:
     return {t for t in out if t}
 
 
+DE_MARKERS = set("""der die das und mit für von zu ist sind wir unser unsere sie ihre bei
+auf im in den dem des eine einen einer werden wird haben hat als auch nicht oder aber wenn
+dass durch über unter nach vor zwischen sowie bereits sowohl""".split())
+
+
+def is_german(text: str) -> bool:
+    """Crude language check, and crude is enough for the decision it drives."""
+    w = re.findall(r"[a-zA-ZäöüßÄÖÜ]+", (text or "").lower())
+    if len(w) < 40:
+        return False
+    return sum(1 for x in w if x in DE_MARKERS) / len(w) > 0.06
+
+
+# Brand-shaped tokens: internal capital (Enpal.One), a dot, or a trailing registered mark.
+# These survive in any language because their shape, not their capitalisation, marks them.
+BRANDISH = re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]+|[a-z][A-Z][A-Za-z0-9]*)\b")
+
+
 def company_signals(job: dict, bank=None) -> list[str]:
     """Proper nouns and product names from the posting itself.
 
@@ -140,6 +158,22 @@ def company_signals(job: dict, bank=None) -> list[str]:
     company = str(job.get("company") or "")
     title_words = set(words(str(job.get("title") or "")))
     banned = generic_tech_terms(bank) if bank else set()
+    desc = str(job.get("description") or "")
+
+    # GERMAN CAPITALISES EVERY NOUN, so a capitalised-span heuristic returns ordinary
+    # vocabulary -- "Dach", "Haus", "Garage" -- and presents it as company identity. That
+    # is worse than returning nothing, because it looks like a usable hook. On a German
+    # posting, fall back to brand-shaped tokens only and let the caller say so.
+    if is_german(desc):
+        out, seen = [], set()
+        for m in BRANDISH.finditer(desc):
+            c = m.group(0).strip(". ")
+            if len(c) < 4 or c.lower() in banned or c.lower() == company.lower():
+                continue
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out[:10]
     generic = {"we", "you", "our", "the", "this", "it", "as", "in", "at", "for", "and",
                "about", "your", "their", "job", "role", "team", "what", "who", "why",
                "how", "please", "apply", "position", "company", "ready", "join",
@@ -156,9 +190,23 @@ def company_signals(job: dict, bank=None) -> list[str]:
             # names. A real proper noun recurs mid-sentence; a sentence-starter does not.
             if m.start() == 0:
                 continue
+            # SKIP BULLET-INITIAL SPANS, for the same reason. Responsibility lists read
+            # "- Partner with stakeholders", "- Build and maintain", "- Ensure data
+            # quality", and once whitespace is collapsed those are not line starts, so the
+            # rule above misses them. They are the job's verbs, not the company's name.
+            before = sentence[:m.start()].rstrip()
+            if not before or before[-1] in "-*\u2022\u2013\u00b7:;":
+                continue
             c = m.group(0).strip(". ")
             low = c.lower()
             if len(c) < 3 or low in generic or low in banned or low == company.lower():
+                continue
+            # ALL-CAPS SECTION HEADERS ("BRING", "OFFER", "WHAT WE VALUE") are shouted
+            # ordinary words, not names. An acronym like ERP or SCM never appears in
+            # lowercase in the same text; a shouted word does. Same test as the
+            # sentence-initial rule: does it behave like a name elsewhere?
+            if c.isupper() and len(c) > 3 and re.search(
+                    rf"{re.escape(c.lower())}", desc.lower().replace(c.lower(), "", 1)):
                 continue
             cw = words(c)
             # A span built only from words already in the job title says nothing about the
@@ -169,6 +217,42 @@ def company_signals(job: dict, bank=None) -> list[str]:
                 seen.add(c)
                 out.append(c)
     return out[:14]
+
+
+def sibling_signals(job: dict, bank, jobs_dir: Path) -> list[str]:
+    """Hooks from OTHER postings by the same company in this batch.
+
+    Some postings carry no "About us" section at all -- this one opened straight into
+    "About the role" -- so there is nothing company-specific to extract. Sibling postings
+    from the same employer usually carry the boilerplate that names the products.
+
+    This stays inside the rule that matters: it is the same company's own text, already
+    fetched, from a source we know is theirs. It is not a web fetch and cannot land on
+    the wrong company.
+    """
+    import yaml as _yaml
+    company = str(job.get("company") or "").strip().lower()
+    if not company:
+        return []
+    out, seen = [], set()
+    for p in sorted(jobs_dir.glob("*.yaml")):
+        try:
+            other = _yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception:                                        # noqa: BLE001
+            continue
+        if str(other.get("company") or "").strip().lower() != company:
+            continue
+        if other.get("url") == job.get("url"):
+            continue
+        # Do not mix languages: German hooks in an English letter read as pasted-in.
+        if is_german(str(other.get("description") or "")) != is_german(
+                str(job.get("description") or "")):
+            continue
+        for sig in company_signals(other, bank):
+            if sig not in seen:
+                seen.add(sig)
+                out.append(sig)
+    return out[:10]
 
 
 def select_facts(bank, job, variant_id="ds", top=6):
@@ -422,6 +506,16 @@ def main() -> int:
     if not facts:
         sys.exit("no confirmed facts matched this posting — run validate.py")
     signals = company_signals(job, bank)
+    borrowed = []
+    # Borrow on QUALITY, not count. This posting produced thirteen hooks and not one of
+    # them named the company -- "Senior", "ERP", "Snowflake" are the role's vocabulary.
+    # A brand-shaped token (Enpal.One, Metrify) is the thing worth opening a letter with,
+    # so the trigger is "none of my own hooks look like a product name".
+    if not any(BRANDISH.search(x) for x in signals):
+        borrowed = [x for x in sibling_signals(job, bank, HERE / "jobs") if x not in signals]
+        # Brand-shaped ones first: they are what the opening actually needs.
+        borrowed.sort(key=lambda x: (not bool(BRANDISH.search(x)), x))
+        signals = borrowed + signals
 
     body = None
     if args.llm:
@@ -447,7 +541,13 @@ def main() -> int:
 
     log(f"\nDRAFT  letters/{slug}.md")
     log(f"  {len(facts)} fact(s) retrieved · {len(signals)} company hook(s) found")
-    log(f"  hooks: {' · '.join(signals[:6])}")
+    if is_german(str(job.get("description") or "")):
+        log("  posting is in German — capitalisation carries no signal there, so only")
+        log("  brand-shaped names were extracted. Read the posting for your hook.")
+    log(f"  hooks: {' · '.join(signals[:8]) if signals else '(none found — read the posting)'}")
+    if borrowed:
+        log(f"  ({len(borrowed)} borrowed from other {job.get('company')} postings in this"
+            f" batch — this one carried no company section of its own)")
     log("\nGATE 3 — write the opening yourself. Every check fails until you do.")
     log(f"  then:  python letter.py --check {slug}")
     log(f"  then:  python letter.py --render {slug}")
