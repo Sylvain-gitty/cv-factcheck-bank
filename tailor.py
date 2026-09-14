@@ -63,6 +63,14 @@ import render as R
 HERE = Path(__file__).parent
 OUT = HERE / "out" / "jobs"
 
+# A posting is not obliged to be ASCII, and --explain prints it back verbatim. On a
+# cp1252 console one emoji in a job description killed the run mid-report and wrote
+# nothing. Same guard as rank.py, letter.py and package.py.
+try:
+    sys.stdout.reconfigure(errors="replace")
+except Exception:                                                # noqa: BLE001
+    pass
+
 STOP = set("""a an and are as at be but by for from has have how if in into is it its of on or
 that the their this to was were what when where which who will with you your we our us they
 role position company team work working experience years year job apply application ideally
