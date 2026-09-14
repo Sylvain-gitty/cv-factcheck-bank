@@ -251,28 +251,105 @@ def write_digest(rows, gaps):
         f"<h1>Job digest — {ts}</h1>{body}", encoding="utf-8")
 
 
+# Accepted spellings for a tick. The file's own header reads "p = pursue, s = skip",
+# which invites the word as readily as the letter, so both are read. Nothing else is
+# guessed at -- an unrecognised mark is reported, never silently interpreted.
+TICK_WORDS = {"p": "pursue", "pursue": "pursue", "s": "skip", "skip": "skip"}
+
+
+def parse_ticks(text: str) -> tuple[dict[str, str], list[tuple[int, str]]]:
+    """decisions.txt -> ({slug: verdict or ""}, [(lineno, raw) that did not parse]).
+
+    EVERY bracketed line comes back in exactly one of the two returns. That is the whole
+    reason this function exists.
+
+    The version this replaces matched `^\[([psPS])\]` -- a single character -- and let
+    every other bracketed line fall out of the loop unmentioned. A file ticked
+    `[pursue]` / `[skip]` therefore recorded nothing at all while still printing
+    `recorded 1 new decision(s)`, and eighteen real decisions were lost in one run.
+
+    That is the worst shape a bug can take here. The decision log is the one dataset in
+    this project that cannot be rebuilt later: each row snapshots the ranker's features
+    AT DECISION TIME, against a job corpus that is gone by the next morning. A dropped
+    tick is not a retry, it is a permanent hole in the training set -- and it was
+    reported as success.
+    """
+    marks: dict[str, str] = {}
+    bad: list[tuple[int, str]] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if not line.lstrip().startswith("["):
+            continue
+        m = re.match(r"^\[([^\]]*)\]\s+(\S+)", line)
+        if not m:
+            bad.append((lineno, line.strip()))
+            continue
+        mark, slug = m.group(1).strip().lower(), m.group(2)
+        if not mark:
+            marks[slug] = ""                   # deliberately undecided, reappears tomorrow
+        elif mark in TICK_WORDS:
+            marks[slug] = TICK_WORDS[mark]
+        else:
+            bad.append((lineno, line.strip()))
+    return marks, bad
+
+
+def report_bad_ticks(bad, prefix="  "):
+    log(f"\n{prefix}!! {len(bad)} line(s) in decisions.txt could not be read:")
+    for lineno, raw in bad[:12]:
+        log(f"{prefix}     line {lineno}: {raw[:68]}")
+    if len(bad) > 12:
+        log(f"{prefix}     ... and {len(bad) - 12} more")
+    log(f"{prefix}   A tick is [p] or [s] -- [pursue] and [skip] also read.")
+
+
 def write_decisions(rows):
-    prior = {}
+    prior, bad = {}, []
     if DECISIONS.exists():
-        for m in re.finditer(r"^\[([ psPS])\]\s+(\S+)", DECISIONS.read_text(encoding="utf-8"), re.M):
-            prior[m.group(2)] = m.group(1).lower()
+        prior, bad = parse_ticks(DECISIONS.read_text(encoding="utf-8"))
+    canon = {"pursue": "p", "skip": "s"}
     L = ["# p = pursue, s = skip. Then: python rank.py --decide",
          "# Blank lines are left undecided and will reappear tomorrow.", ""]
     for r in rows:
-        mark = prior.get(r["slug"], " ")
+        mark = canon.get(prior.get(r["slug"], ""), " ")
         L.append(f"[{mark}] {r['slug']:<62} # {str(r['job'].get('title'))[:52]}")
     DECISIONS.write_text("\n".join(L) + "\n", encoding="utf-8")
+    # A tick that could not be read is a blank line in the file just written. Say so,
+    # rather than let the rewrite quietly swallow an intent the reader expressed.
+    if bad:
+        report_bad_ticks(bad)
+        log("     Those were reset to blank above -- re-tick them before --decide.")
 
 
 def apply_decisions(scores):
     if not DECISIONS.exists():
-        sys.exit("decisions.txt not found — run `python rank.py` first.")
+        sys.exit("decisions.txt not found -- run `python rank.py` first.")
+    marks, bad = parse_ticks(DECISIONS.read_text(encoding="utf-8"))
+
+    # REFUSE BEFORE WRITING ANYTHING. A partial apply reporting success is exactly how
+    # the eighteen went missing: neither you nor bridge.py could tell a whole run from
+    # half of one. Nothing is recorded until the file reads cleanly, so the fix is
+    # always "correct the line and re-run", never "work out what was lost".
+    if bad:
+        report_bad_ticks(bad)
+        log("\n     Nothing was recorded. No decision has been lost -- fix those")
+        log("     lines and re-run.")
+        return 1
+
     log_data = json.loads(DECISION_LOG.read_text(encoding="utf-8")) if DECISION_LOG.exists() else {}
-    n = 0
-    for m in re.finditer(r"^\[([psPS])\]\s+(\S+)", DECISIONS.read_text(encoding="utf-8"), re.M):
-        verdict, slug = ("pursue" if m.group(1).lower() == "p" else "skip"), m.group(2)
-        if slug in log_data:
+    n, unchanged = 0, 0
+    changed, featureless = [], []
+    for slug, verdict in marks.items():
+        if not verdict:
             continue
+        prev = log_data.get(slug)
+        if prev:
+            if prev.get("verdict") != verdict:
+                changed.append((slug, prev.get("verdict"), verdict))
+            else:
+                unchanged += 1
+            continue
+        if slug not in scores:
+            featureless.append(slug)
         # Snapshot the features AT DECISION TIME. Re-deriving them later would train on
         # a corpus that no longer exists.
         log_data[slug] = {"verdict": verdict,
@@ -284,8 +361,28 @@ def apply_decisions(scores):
     tally = {}
     for v in log_data.values():
         tally[v["verdict"]] = tally.get(v["verdict"], 0) + 1
-    log(f"recorded {n} new decision(s)")
-    log(f"history: {tally.get('pursue', 0)} pursue / {tally.get('skip', 0)} skip "
+
+    ticked = sum(1 for v in marks.values() if v)
+    log(f"read {len(marks)} tick line(s), {ticked} ticked")
+    log(f"recorded {n} new decision(s)" + (f", {unchanged} already logged" if unchanged else ""))
+
+    # A tick contradicting the log is not applied, because overwriting would replace a
+    # real snapshot with features from today's corpus. It is not ignored either:
+    # silence here is the same failure this function was just fixed for.
+    if changed:
+        log(f"\n  {len(changed)} tick(s) disagree with a decision already logged:")
+        for slug, was, now in changed:
+            log(f"    {slug[:56]:<56} logged {was}, ticked {now}")
+        log("  The log keeps the original -- its features belong to that day's corpus")
+        log("  and cannot be re-derived. Edit .state/decisions.json if the first was wrong.")
+
+    if featureless:
+        log(f"\n  {len(featureless)} decision(s) recorded with no features (job file gone):")
+        for slug in featureless[:8]:
+            log(f"    {slug[:64]}")
+        log("  Verdict kept, but these carry no training signal for Stage 2b.")
+
+    log(f"\nhistory: {tally.get('pursue', 0)} pursue / {tally.get('skip', 0)} skip "
         f"({len(log_data)} total)")
     if len(log_data) < 150:
         log(f"\n{150 - len(log_data)} more before there is enough signal to tune Stage 2b "
