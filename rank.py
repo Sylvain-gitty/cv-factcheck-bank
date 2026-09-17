@@ -196,12 +196,13 @@ def call_llm(prompt: str):
 
 # --------------------------------------------------------------------------- digest
 
-def write_digest(rows, gaps):
+def write_digest(rows, gaps, decided=(), remaining=0):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     md = [f"# Job digest — {ts}", "",
-          f"{len(rows)} posting(s), ranked. **Rank is meaningful; the score is relative to "
-          "this batch only** — BM25 depends on the corpus, so today's number and tomorrow's "
-          "are not the same scale.", "",
+          f"**{len(rows)} posting(s) to decide.** {remaining} undecided in the corpus; "
+          f"{len(decided)} already judged, listed at the end. **Rank is meaningful; the "
+          "score is relative to this batch only** — BM25 depends on the corpus, so today's "
+          "number and tomorrow's are not the same scale.", "",
           "Tick `decisions.txt` (`p` pursue / `s` skip), then `python rank.py --decide`. "
           "Every decision is also a training label for tuning Stage 2b later.", "",
           "An archetype marked _ambiguous_ means the top two scores were within "
@@ -222,6 +223,16 @@ def write_digest(rows, gaps):
             if llm.get("red_flags"):
                 md += ["", "**Red flags:** " + ", ".join(llm["red_flags"])]
         md += ["", f"<{j.get('url')}>", ""]
+    if decided:
+        md += ["---", "", f"## Already decided — {len(decided)}", "",
+               "Recorded in `.state/decisions.json` and not part of the queue above. "
+               "A pursue still sitting here is an application you have not assembled yet. "
+               "To put one back in the queue: `python rank.py --reopen <slug>`.", ""]
+        for d in decided:
+            j = d["job"]
+            md += [f"- **{d['verdict']}** · {j.get('title')} — {j.get('company') or '?'} "
+                   f"· `{d['slug']}` · {d['score']['relative']}/100"]
+        md += [""]
     if gaps:
         md += ["---", "", "## Skill gaps across this batch", "",
                "What the market asked for and your bank could not answer. This is a "
@@ -241,12 +252,24 @@ def write_digest(rows, gaps):
         + (f"<p class='why'>{escape(str(r['llm'].get('one_line_why','')))}</p>" if r.get("llm") else "")
         + f"<p><a href='{escape(str(r['job'].get('url')))}'>{escape(str(r['job'].get('url')))}</a></p></article>"
         for i, r in enumerate(rows, 1))
+    if decided:
+        body += (f"<h2 class='sec'>Already decided — {len(decided)}</h2>"
+                 "<p class='meta'>Not part of the queue above. "
+                 "<code>python rank.py --reopen &lt;slug&gt;</code> puts one back.</p>")
+        body += "".join(
+            f"<p class='done'><b>{escape(d['verdict'])}</b> · "
+            f"{escape(str(d['job'].get('title')))} — "
+            f"{escape(str(d['job'].get('company') or '?'))} "
+            f"<span class='meta'>{d['score']['relative']}/100</span></p>"
+            for d in decided)
     (OUT / "digest.html").write_text(
         "<!doctype html><meta charset='utf-8'><title>Job digest</title>"
         "<style>html,body{background:#fff!important;color:#1a1a1a!important}"
         "body{font:14px/1.5 'Segoe UI',system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem}"
         "article{border-bottom:1px solid #ddd;padding:.8rem 0}h2{font-size:15px;margin:0 0 .2rem}"
         ".meta{color:#666;font-size:12.5px;margin:.2rem 0}.why{margin:.3rem 0}"
+        ".sec{font-size:14px;margin:1.6rem 0 .4rem;border-top:2px solid #ddd;padding-top:1rem}"
+        ".done{font-size:12.5px;color:#444;margin:.25rem 0}"
         "a{color:#0645ad;word-break:break-all;font-size:12.5px}</style>"
         f"<h1>Job digest — {ts}</h1>{body}", encoding="utf-8")
 
@@ -293,6 +316,21 @@ def parse_ticks(text: str) -> tuple[dict[str, str], list[tuple[int, str]]]:
     return marks, bad
 
 
+# The banner that separates the queue from the report of what is already judged.
+DECIDED_BANNER = "# ALREADY DECIDED"
+
+
+def queue_region(text: str) -> str:
+    """Only the part of decisions.txt that is an INPUT.
+
+    Everything below the banner is a report generated from the decision log, and
+    reading marks back out of it makes --reopen a lie: the job returns to the queue
+    already ticked with the verdict just cleared, and the next --decide re-logs it
+    without anyone touching a key. Reopening would report success and change nothing.
+    """
+    return text.split(DECIDED_BANNER, 1)[0]
+
+
 def report_bad_ticks(bad, prefix="  "):
     log(f"\n{prefix}!! {len(bad)} line(s) in decisions.txt could not be read:")
     for lineno, raw in bad[:12]:
@@ -302,22 +340,66 @@ def report_bad_ticks(bad, prefix="  "):
     log(f"{prefix}   A tick is [p] or [s] -- [pursue] and [skip] also read.")
 
 
-def write_decisions(rows):
+def write_decisions(rows, decided=()):
     prior, bad = {}, []
     if DECISIONS.exists():
-        prior, bad = parse_ticks(DECISIONS.read_text(encoding="utf-8"))
+        # Queue region only -- see queue_region().
+        prior, bad = parse_ticks(queue_region(DECISIONS.read_text(encoding="utf-8")))
     canon = {"pursue": "p", "skip": "s"}
     L = ["# p = pursue, s = skip. Then: python rank.py --decide",
          "# Blank lines are left undecided and will reappear tomorrow.", ""]
     for r in rows:
         mark = canon.get(prior.get(r["slug"], ""), " ")
         L.append(f"[{mark}] {r['slug']:<62} # {str(r['job'].get('title'))[:52]}")
+    # Everything already judged, kept visible below the queue so a pursue you have not
+    # acted on yet cannot quietly drop out of sight. These lines are a REPORT, not an
+    # input: apply_decisions reads them, finds them already logged and leaves them
+    # alone. Reticking one here changes nothing, which is what --reopen is for -- and
+    # apply_decisions says so rather than letting the edit pass unmentioned.
+    if decided:
+        L += ["",
+              "# " + "-" * 74,
+              f"{DECIDED_BANNER} — {len(decided)}. Recorded in .state/decisions.json and not",
+              "# part of the queue above. Editing a mark here does nothing. To put one back:",
+              "#     python rank.py --reopen <slug>",
+              "# " + "-" * 74]
+        for d in decided:
+            L.append(f"[{canon[d['verdict']]}] {d['slug']:<62} "
+                     f"# {str(d['job'].get('title'))[:52]}")
     DECISIONS.write_text("\n".join(L) + "\n", encoding="utf-8")
     # A tick that could not be read is a blank line in the file just written. Say so,
     # rather than let the rewrite quietly swallow an intent the reader expressed.
     if bad:
         report_bad_ticks(bad)
         log("     Those were reset to blank above -- re-tick them before --decide.")
+
+
+def reopen_decisions(slugs):
+    """Drop rows from the decision log so Gate 1 asks about them again.
+
+    Deliberately the only way to undo a decision. A tick cannot overwrite a logged
+    verdict, because the row carries features snapshotted against the corpus of the
+    day it was made and silently rewriting it would mix two different scoring runs
+    into one training example. Reopening drops the row whole; deciding again
+    snapshots today's corpus cleanly.
+    """
+    if not DECISION_LOG.exists():
+        sys.exit("no decisions logged yet.")
+    log_data = json.loads(DECISION_LOG.read_text(encoding="utf-8"))
+    missing = [s for s in slugs if s not in log_data]
+    if missing:
+        log(f"not in the decision log, nothing to reopen:")
+        for slug in missing:
+            log(f"    {slug}")
+        return 1
+    for slug in slugs:
+        row = log_data.pop(slug)
+        when = str(row.get("decided_at", ""))[:10]
+        log(f"reopened {slug}  (was {row.get('verdict')}, decided {when})")
+    DECISION_LOG.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
+    log(f"\n{len(log_data)} decision(s) remain. Re-run `python rank.py` and the "
+        f"job{'s' if len(slugs) > 1 else ''} will be back in the queue.")
+    return 0
 
 
 def apply_decisions(scores):
@@ -374,7 +456,8 @@ def apply_decisions(scores):
         for slug, was, now in changed:
             log(f"    {slug[:56]:<56} logged {was}, ticked {now}")
         log("  The log keeps the original -- its features belong to that day's corpus")
-        log("  and cannot be re-derived. Edit .state/decisions.json if the first was wrong.")
+        log("  and cannot be re-derived. To judge one again from scratch:")
+        log(f"      python rank.py --reopen {changed[0][0]}")
 
     if featureless:
         log(f"\n  {len(featureless)} decision(s) recorded with no features (job file gone):")
@@ -397,6 +480,8 @@ def main() -> int:
     ap.add_argument("--llm", action="store_true", help="run Stage 2c on the top N")
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--decide", action="store_true", help="apply ticks from decisions.txt")
+    ap.add_argument("--reopen", nargs="+", metavar="SLUG",
+                    help="drop these from the decision log so they return to the queue")
     args = ap.parse_args()
 
     bank = R.load_bank()
@@ -408,14 +493,36 @@ def main() -> int:
     jobs = {p.stem: (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) for p in files}
 
     scores = score_batch(jobs, profile)
+    if args.reopen:
+        return reopen_decisions(args.reopen)
     if args.decide:
         return apply_decisions(scores)
 
-    ranked = sorted(jobs, key=lambda s: -scores[s]["relative"])[:args.top]
+    # GATE 1 IS A QUEUE, NOT A LEADERBOARD. Ranking the whole corpus every run parks
+    # every decided job at the top of it forever: measured on a real batch, the top 20
+    # held 19 already-judged postings and one new one, while 166 had never been shown.
+    # At roughly one new posting per run the 150 decisions needed to tune Stage 2b are
+    # unreachable -- and worse, the labels you do collect are all drawn from the high
+    # scores, so the training set carries almost no low-scoring examples and cannot
+    # teach the ranker where its own boundary is.
+    log_data = json.loads(DECISION_LOG.read_text(encoding="utf-8")) if DECISION_LOG.exists() else {}
+    undecided = [s for s in jobs if s not in log_data]
+    ranked = sorted(undecided, key=lambda s: -scores[s]["relative"])[:args.top]
     rows = [{"slug": s, "job": jobs[s], "score": scores[s]} for s in ranked]
 
+    # Judged jobs are reported, never silently dropped: a pursue you have not packaged
+    # yet is the one thing here that still needs doing.
+    order = {"pursue": 0, "skip": 1}
+    decided = sorted(
+        ({"slug": s, "job": jobs[s], "score": scores[s],
+          "verdict": log_data[s].get("verdict", "skip")}
+         for s in jobs if s in log_data),
+        key=lambda d: (order.get(d["verdict"], 9), -d["score"]["relative"]))
+
     log(f"\nStage 2b — scored {len(jobs)} job(s) against "
-        f"{len(profile.get('archetypes', []))} archetypes\n")
+        f"{len(profile.get('archetypes', []))} archetypes")
+    log(f"  {len(undecided)} undecided, {len(decided)} already judged — "
+        f"showing the top {len(rows)} you have not seen\n")
     for i, r in enumerate(rows, 1):
         sc = r["score"]
         flag = " " if sc["archetype_confident"] else "~"
@@ -454,8 +561,8 @@ def main() -> int:
                 gaps[s] = gaps.get(s, 0) + 1
     gaps = sorted(gaps.items(), key=lambda kv: -kv[1])[:12]
 
-    write_digest(rows, gaps)
-    write_decisions(rows)
+    write_digest(rows, gaps, decided, len(undecided))
+    write_decisions(rows, decided)
     STATE.mkdir(exist_ok=True)
     SCORES.write_text(json.dumps(scores, indent=2), encoding="utf-8")
 
