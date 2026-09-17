@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Stage 3 — tailor a CV to one job.
 
-    python tailor.py jobs/example-berlin-ds.yaml
-    python tailor.py jobs/example-berlin-ds.yaml --variant pm
-    python tailor.py jobs/example-berlin-ds.yaml --llm       # optional selector
-    python tailor.py jobs/example-berlin-ds.yaml --explain   # show the retrieval working
+    python tailor.py job.example.yaml
+    python tailor.py job.example.yaml --variant pm
+    python tailor.py job.example.yaml --llm       # optional selector
+    python tailor.py job.example.yaml --explain   # show the retrieval working
 
 Output: out/jobs/<slug>/  ->  cv.html, cv.md, trace.json, selection.json, checks.json
 

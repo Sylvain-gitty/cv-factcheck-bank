@@ -1,8 +1,16 @@
-# A job input file. In production, Plan 01 Stage 1 writes these automatically and
-# Stage 2c fills in `requirements` from its structured extraction.
+# job.example.yaml — copy into jobs/ and edit.
 #
-# Until then, paste a posting in by hand. If you leave `requirements` out, tailor.py
-# extracts them heuristically from `description` (bullets first, then sentences).
+#     cp job.example.yaml jobs/my-posting.yaml
+#
+# It sits here rather than in jobs/ deliberately. rank.py globs jobs/*.yaml and scores
+# every file it finds, so a fixture parked in there joins the corpus: it shifts BM25's
+# IDF for every real posting and takes a slot in the digest you then have to skip. This
+# one ranked second on a live batch, above real jobs, until it was moved out.
+#
+# In production Stage 1 writes these automatically and Stage 2c fills in `requirements`
+# from its structured extraction. Until then, paste a posting in by hand. If you leave
+# `requirements` out, tailor.py extracts them heuristically from `description` (bullets
+# first, then sentences).
 
 title: Data Scientist (m/w/d) — Machine Learning
 company: Beispiel GmbH

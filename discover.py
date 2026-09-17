@@ -397,7 +397,7 @@ def ingest_url(url: str, rules: dict) -> int:
         log(f"\nNot a recognised ATS URL: {url}")
         log("Supported: Lever (jobs.lever.co, jobs.eu.lever.co), Greenhouse")
         log("(job-boards.greenhouse.io) and Ashby (jobs.ashbyhq.com).")
-        log("For anything else, write the job YAML by hand -- see jobs/example-berlin-ds.yaml.")
+        log("For anything else, write the job YAML by hand -- see job.example.yaml.")
         return 1
 
     job["source"] = "url"
