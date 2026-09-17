@@ -13,6 +13,7 @@ facts.yaml
 vocab.yaml
 confirm.txt
 decisions.txt
+decisions.csv
 NOTES.private.md
 
 # Rendered output: CVs, traces, check reports
@@ -24,7 +25,6 @@ articles/
 applications.csv
 answers.yaml
 jobs/*.yaml
-!jobs/example-*.yaml
 .state/
 bridge-token
 

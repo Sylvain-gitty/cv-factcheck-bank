@@ -43,6 +43,7 @@ JSON back. The pipeline degrades to 2b and keeps working.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -66,6 +67,7 @@ STATE = HERE / ".state"
 SCORES = STATE / "scores.json"
 DECISIONS = HERE / "decisions.txt"
 DECISION_LOG = STATE / "decisions.json"
+DECISIONS_CSV = HERE / "decisions.csv"     # the same thing, legible
 
 
 def log(msg=""):
@@ -374,6 +376,62 @@ def write_decisions(rows, decided=()):
         log("     Those were reset to blank above -- re-tick them before --decide.")
 
 
+def load_log() -> dict:
+    if not DECISION_LOG.exists():
+        return {}
+    return json.loads(DECISION_LOG.read_text(encoding="utf-8"))
+
+
+def write_decisions_csv(log_data, jobs, scores):
+    """The decision record, in a format you can actually open.
+
+    .state/decisions.json is the training set: it carries the ranker's features at
+    decision time and is shaped for that. It is also dot-hidden, nested and unreadable
+    at a glance, which made "did my ticks land?" a question nobody could answer without
+    parsing JSON -- and twenty-five decisions went missing behind exactly that question.
+
+    So the same rows are written here as a flat CSV, every time a decision is applied.
+    Same data, one row per judgement, opens in a spreadsheet. Rows whose job file has
+    since been deleted are still listed, with blank job columns: an incomplete record
+    that looks complete is the failure this file exists to prevent.
+    """
+    cols = ["slug", "verdict", "decided_at", "company", "title", "location",
+            "batch_score", "archetype", "source", "url"]
+    rows = []
+    for slug, row in log_data.items():
+        j, sc = jobs.get(slug) or {}, scores.get(slug) or {}
+        rows.append({
+            "slug": slug,
+            "verdict": row.get("verdict", ""),
+            "decided_at": str(row.get("decided_at", ""))[:10],
+            "company": j.get("company", ""),
+            "title": j.get("title", ""),
+            "location": j.get("location", ""),
+            "batch_score": sc.get("relative", ""),
+            "archetype": sc.get("archetype_label", ""),
+            "source": j.get("source", ""),
+            "url": j.get("url", ""),
+        })
+    rows.sort(key=lambda r: (r["decided_at"], r["slug"]), reverse=True)
+    with DECISIONS_CSV.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols)
+        w.writeheader()
+        w.writerows(rows)
+
+
+def pending_work(log_data):
+    """Anything in the queue region this run has not already recorded.
+
+    Returns (unrecorded ticks, unreadable lines). Either being non-empty means
+    decisions.txt holds judgement that exists nowhere else, and rewriting the file
+    would destroy it.
+    """
+    if not DECISIONS.exists():
+        return {}, []
+    marks, bad = parse_ticks(queue_region(DECISIONS.read_text(encoding="utf-8")))
+    return {s: v for s, v in marks.items() if v and s not in log_data}, bad
+
+
 def reopen_decisions(slugs):
     """Drop rows from the decision log so Gate 1 asks about them again.
 
@@ -417,7 +475,7 @@ def apply_decisions(scores):
         log("     lines and re-run.")
         return 1
 
-    log_data = json.loads(DECISION_LOG.read_text(encoding="utf-8")) if DECISION_LOG.exists() else {}
+    log_data = load_log()
     n, unchanged = 0, 0
     changed, featureless = [], []
     for slug, verdict in marks.items():
@@ -446,6 +504,12 @@ def apply_decisions(scores):
 
     ticked = sum(1 for v in marks.values() if v)
     log(f"read {len(marks)} tick line(s), {ticked} ticked")
+    if ticked and not n and not changed:
+        # Loud, because the quiet version of this line is how the last batch vanished:
+        # every tick present was one already in the log, so there was nothing to record
+        # and nothing went wrong -- but "recorded 0" read like a failure and the next
+        # command rewrote the file.
+        log("  (every tick was already recorded -- nothing new in this file)")
     log(f"recorded {n} new decision(s)" + (f", {unchanged} already logged" if unchanged else ""))
 
     # A tick contradicting the log is not applied, because overwriting would replace a
@@ -495,8 +559,19 @@ def main() -> int:
     scores = score_batch(jobs, profile)
     if args.reopen:
         return reopen_decisions(args.reopen)
+
+    # ONE COMMAND, NOT THREE. Ticking, recording and refreshing used to be separate
+    # steps with an ordering dependency and a destructive rewrite in the middle: tick,
+    # --decide, then plain rank.py to see new jobs -- and anything the middle step did
+    # not capture was erased by the third with no warning. Twenty-five decisions went
+    # that way in one sitting. --decide now records, reports, and refreshes the queue
+    # in the same run, so there is no window in which judgement exists only in a file
+    # that is about to be overwritten.
     if args.decide:
-        return apply_decisions(scores)
+        rc = apply_decisions(scores)
+        if rc != 0:
+            return rc
+        log("")
 
     # GATE 1 IS A QUEUE, NOT A LEADERBOARD. Ranking the whole corpus every run parks
     # every decided job at the top of it forever: measured on a real batch, the top 20
@@ -505,7 +580,28 @@ def main() -> int:
     # unreachable -- and worse, the labels you do collect are all drawn from the high
     # scores, so the training set carries almost no low-scoring examples and cannot
     # teach the ranker where its own boundary is.
-    log_data = json.loads(DECISION_LOG.read_text(encoding="utf-8")) if DECISION_LOG.exists() else {}
+    log_data = load_log()
+
+    # REFUSE TO OVERWRITE JUDGEMENT THAT EXISTS NOWHERE ELSE. A bare run rewrites
+    # decisions.txt, so any tick not yet in the log would be gone. Rather than warn
+    # after the fact, stop before the write and name the command that saves them.
+    if not args.decide:
+        pending, bad = pending_work(log_data)
+        if pending or bad:
+            log("")
+            if pending:
+                log(f"  {len(pending)} tick(s) in decisions.txt are not recorded yet:")
+                for slug, verdict in list(pending.items())[:10]:
+                    log(f"      [{verdict[0]}] {slug[:62]}")
+                if len(pending) > 10:
+                    log(f"      ... and {len(pending) - 10} more")
+            if bad:
+                report_bad_ticks(bad)
+            log("\n  Refusing to rewrite decisions.txt -- that would erase them.")
+            log("  This records them and refreshes the queue in one go:")
+            log("\n      python rank.py --decide\n")
+            return 1
+
     undecided = [s for s in jobs if s not in log_data]
     ranked = sorted(undecided, key=lambda s: -scores[s]["relative"])[:args.top]
     rows = [{"slug": s, "job": jobs[s], "score": scores[s]} for s in ranked]
@@ -562,6 +658,7 @@ def main() -> int:
     gaps = sorted(gaps.items(), key=lambda kv: -kv[1])[:12]
 
     write_digest(rows, gaps, decided, len(undecided))
+    write_decisions_csv(log_data, jobs, scores)
     write_decisions(rows, decided)
     STATE.mkdir(exist_ok=True)
     SCORES.write_text(json.dumps(scores, indent=2), encoding="utf-8")
