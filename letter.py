@@ -520,29 +520,46 @@ def run_checks(slug, text, job, bank):
 
 # --------------------------------------------------------------------------- render
 
-CSS = """html,body{background:#fff!important;color:#1a1a1a!important}
-@page{size:A4;margin:22mm 20mm}
-body{font:11pt/1.55 "Source Sans Pro","Segoe UI",Calibri,sans-serif;max-width:170mm;margin:0 auto}
-.head{margin-bottom:12mm}.head h1{font-size:15pt;margin:0 0 2px}
-.meta{color:#555;font-size:9.5pt}
-.to{margin:8mm 0 6mm;font-size:10.5pt}
-p{margin:0 0 3.6mm;text-align:justify}
-.sig{margin-top:10mm}"""
+# The letterhead is render.CSS_BASE -- the same typeface, name size, contact styling and
+# rule the CV uses. A CV and its covering letter arrive together and read as one document;
+# when these were two independent stylesheets they drifted into different type sizes and a
+# rule on one but not the other. Only the rules a letter needs and a CV does not live here:
+# a letter is one page of prose, so it wants wider margins and looser leading than a CV
+# packing two pages of bullets.
+CSS = R.CSS_BASE + """
+@page { size: A4; margin: 18mm 18mm; }
+body { line-height: 1.5; max-width: 175mm; margin: 0 auto; padding: 6mm; }
+.to { margin: 9mm 0 7mm; font-size: 9.8pt; color: #333; }
+.to b { color: #000; }
+p { margin: 0 0 3.4mm; text-align: justify; }
+.sig { margin-top: 9mm; }
+"""
 
 
 def render_letter(slug, text, job, bank):
     owner = bank["profile"].get("owner", {})
     prose = prose_of(text)
-    paras = "".join(f"<p>{p.strip()}</p>" for p in re.split(r"\n\s*\n", prose) if p.strip())
-    contact = " · ".join(str(x) for x in (owner.get("email"), owner.get("phone"),
-                                          owner.get("location")) if x)
-    html = (f"<!doctype html><meta charset='utf-8'><title>{owner.get('name')} — "
-            f"{job.get('company') or ''}</title><style>{CSS}</style>"
-            f"<div class='head'><h1>{owner.get('name')}</h1>"
-            f"<div class='meta'>{contact}</div></div>"
-            f"<div class='to'>{job.get('company') or ''}<br>"
-            f"<b>Re: {job.get('title')}</b><br>{date.today().strftime('%d %B %Y')}</div>"
-            f"{paras}<div class='sig'>{owner.get('name')}</div>")
+    paras = "".join(f"<p>{R.esc(p.strip())}</p>"
+                     for p in re.split(r"\n\s*\n", prose) if p.strip())
+    # Same header markup as render.render_html, so CSS_BASE styles both identically:
+    # <header> with an h1, an optional headline, and contact items as <span>s the
+    # stylesheet separates. Building it differently here is how the two drifted before.
+    bits = [owner.get("phone"), owner.get("email"), owner.get("location"),
+            owner.get("linkedin"), owner.get("github")]
+    contact = "".join(f"<span>{R.esc(b)}</span>" for b in bits if b)
+    headline = owner.get("headline_en") or ""
+    html = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+            f"<title>{R.esc(owner.get('name'))} — "
+            f"{R.esc(job.get('company') or '')}</title>"
+            f"<style>{CSS}</style></head><body>"
+            f"<header><h1>{R.esc(owner.get('name'))}</h1>"
+            + (f"<div class='headline'>{R.esc(headline)}</div>" if headline else "")
+            + f"<div class='contact'>{contact}</div></header>"
+            f"<div class='to'>{R.esc(job.get('company') or '')}<br>"
+            f"<b>Re: {R.esc(job.get('title'))}</b><br>"
+            f"{date.today().strftime('%d %B %Y')}</div>"
+            f"{paras}<div class='sig'>{R.esc(owner.get('name'))}</div>"
+            f"</body></html>")
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"{slug}.html").write_text(html, encoding="utf-8")
     pdf = OUT / f"{slug}.pdf"

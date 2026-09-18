@@ -305,21 +305,20 @@ def collect_skills(sel, vocab, cfg):
 
 # --------------------------------------------------------------------------- HTML
 
-CSS = """
-/* A CV is a print document. It is always light, whatever theme the viewer's browser is in
-   -- without an explicit background the page inherits a dark one and the dark text becomes
-   unreadable on screen and unpredictable in print. */
+# THE SHARED IDENTITY. A CV and its covering letter arriving in the same email are one
+# document to the reader, and two stylesheets describing "the same" letterhead had drifted
+# into different type sizes, different name sizes, different contact separators and a rule
+# on one but not the other. So the identity lives here once and letter.py imports it;
+# each document then adds only the rules its own shape needs.
+CSS_BASE = """
+/* These are print documents. They are always light, whatever theme the viewer's browser
+   is in -- without an explicit background the page inherits a dark one and the dark text
+   becomes unreadable on screen and unpredictable in print. */
 html, body { background: #ffffff !important; color: #1a1a1a !important; }
-@page { size: A4; margin: 13mm 14mm; }
 * { box-sizing: border-box; }
 body {
   font-family: "Source Sans Pro", "Segoe UI", Calibri, system-ui, sans-serif;
-  font-size: 10.2pt; line-height: 1.38;
-  max-width: 190mm; margin: 0 auto; padding: 8mm 6mm;
-}
-.draft {
-  background: #b00020; color: #fff; padding: 5px 10px; border-radius: 3px;
-  font-weight: 700; letter-spacing: .04em; font-size: 9pt; margin-bottom: 12px;
+  font-size: 10.2pt;
 }
 header { border-bottom: 2px solid #1a1a1a; padding-bottom: 7px; margin-bottom: 12px; }
 h1 { font-size: 19pt; margin: 0 0 2px; letter-spacing: -.01em; color: #000; }
@@ -332,6 +331,16 @@ h2 {
   margin: 13px 0 7px; color: #000;
   /* Never strand a section heading at the foot of a page with its content overleaf. */
   break-after: avoid-page; page-break-after: avoid;
+}
+@media print { body { padding: 0; } }
+"""
+
+CSS = CSS_BASE + """
+@page { size: A4; margin: 13mm 14mm; }
+body { line-height: 1.38; max-width: 190mm; margin: 0 auto; padding: 8mm 6mm; }
+.draft {
+  background: #b00020; color: #fff; padding: 5px 10px; border-radius: 3px;
+  font-weight: 700; letter-spacing: .04em; font-size: 9pt; margin-bottom: 12px;
 }
 .entity { margin-bottom: 9px; break-inside: avoid; page-break-inside: avoid; }
 /* Title and dates on one line; org and role on a quieter second line. Long project names
@@ -349,7 +358,6 @@ li { margin-bottom: 2px; }
 .langs { margin: 0; }
 @media print {
   .draft { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { padding: 0; }
 }
 """
 
