@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Stage 3 — tailor a CV to one job.
+"""Stage 3 — tailor a CV to a job, or to every job you decided to pursue.
 
+    python tailor.py                              # every pursue: CV + letter draft
+    python tailor.py --force                      # ... rebuilding what is current
     python tailor.py job.example.yaml
     python tailor.py job.example.yaml --variant pm
     python tailor.py job.example.yaml --llm       # optional selector
@@ -39,6 +41,24 @@ challenger against it: the discipline is the point.
 
 In every mode the selector returns FACT IDS ONLY. render.py builds the document, so no
 generated text can reach the page.
+
+------------------------------------------------------------------------------
+BATCH MODE
+
+With no job named, this runs the whole pursue list -- a CV and a letter draft for
+everything Gate 1 said yes to -- and skips whatever is already current. Fifty-nine
+jobs is not a list you re-run by hand, and the point of skipping is not speed: it is
+that a command safe to re-run is one you will actually re-run after each Gate 1 pass.
+
+"Current" means a CV whose recorded variant still matches the one Stage 2b implies,
+and a letter draft that exists. Neither is inferable from the output directory alone,
+which is named after the posting, so the variant is stamped into it.
+
+A rebuilt CV can leave a letter citing facts no longer on the page. Where the opening
+is still the generated TODO, nothing in that file is yours and it is rebuilt -- the
+old one moved to letters/.superseded/ rather than deleted, because "nothing of yours
+is in it" is a claim about a string match. Where you have written the opening, the
+draft is never touched and the run says which ones to re-check.
 """
 
 from __future__ import annotations
@@ -48,9 +68,11 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import unicodedata
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -456,15 +478,214 @@ def slugify(s: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", norm(s).lower())).strip("-") or "job"
 
 
+# --------------------------------------------------------------------------- batch
+#
+# `python tailor.py` with no job runs the whole pursue list: a CV and a letter draft
+# for every job Gate 1 said yes to, skipping whatever is already current.
+#
+# These helpers live here rather than in triage.py because triage.py imports from this
+# module, and a second copy of the variant rule would drift away from this one the
+# first time either changed. One definition, imported.
+
+JOBS_DIR = HERE / "jobs"
+LETTERS_DIR = HERE / "letters"
+DECISION_LOG = HERE / ".state" / "decisions.json"
+SCORES_PATH = HERE / ".state" / "scores.json"
+
+# Recorded inside each output directory, because tailor.py names that directory after
+# the POSTING alone -- so a CV argued from a different half of the bank, or built
+# against an older copy of the posting, is otherwise indistinguishable from a fresh one.
+STAMP = ".triage.json"
+
+# The marker letter.py leaves in a fresh draft. While it is present the opening is
+# unwritten, every gate fails, and nothing in the file is yours.
+OPENING_TODO = "OPENING: WRITE THIS YOURSELF"
+
+VARIANT_FOR = {"data-scientist": "ds", "ai-engineer": "ai", "technical-pm": "pm"}
+
+
+def _load_json(path: Path, default):
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return default
+
+
+def variant_for(slug: str, scores: dict) -> str:
+    """Which CV variant to argue this posting with.
+
+    Not cosmetic: a variant filters the bank by archetype and keyword_coverage measures
+    the SELECTED bullets, so running `ds` against a product posting makes every
+    technical-pm fact ineligible and reports skills as missing that a confirmed fact
+    evidences. Stage 2b has already labelled each posting, so take the label; give the
+    ambiguous ones `span`, which drops the filter and exists for exactly that case.
+    """
+    sc = scores.get(slug) or {}
+    if not sc.get("archetype_confident", False):
+        return "span"
+    return VARIANT_FOR.get(sc.get("archetype"), "span")
+
+
+def dest_for(job: dict) -> Path:
+    return OUT / slugify(f"{job.get('company', '')}-{job.get('title', '')}")
+
+
+def stamp_of(d: Path) -> dict:
+    return _load_json(d / STAMP, {})
+
+
+def write_stamp(d: Path, slug: str, variant: str):
+    if d.exists():
+        (d / STAMP).write_text(json.dumps({"slug": slug, "variant": variant}, indent=2),
+                               encoding="utf-8")
+
+
+def cv_is_current(job: dict, slug: str, variant: str) -> bool:
+    d = dest_for(job)
+    if not (d / "checks.json").exists():
+        return False
+    st = stamp_of(d)
+    return st.get("slug") == slug and st.get("variant") == variant
+
+
+def opening_written(path: Path) -> bool:
+    """True if anything in this draft is the author's.
+
+    Errs towards True. A false positive costs a stale letter you were told about; a
+    false negative would overwrite something you wrote, and this pipeline does not
+    trade those at par.
+    """
+    try:
+        return OPENING_TODO not in path.read_text(encoding="utf-8")
+    except OSError:
+        return True
+
+
+def supersede(path: Path) -> Path:
+    """Move a draft aside instead of deleting it. Regeneration only ever discards
+    machine-written text, but 'only ever' is a claim about a string match, so the old
+    file is kept where it can be read back rather than destroyed on the strength of it.
+    """
+    keep = LETTERS_DIR / ".superseded"
+    keep.mkdir(parents=True, exist_ok=True)
+    dest = keep / f"{path.stem}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.md"
+    path.replace(dest)
+    return dest
+
+
+def _run(args: list[str]) -> tuple[bool, str]:
+    r = subprocess.run([sys.executable, *args], cwd=HERE, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout or "").strip().splitlines()
+        return False, (tail[-1][:70] if tail else f"exit {r.returncode}")
+    return True, ""
+
+
+def run_batch(force: bool) -> int:
+    """CV + letter draft for every pursued job, skipping what is already current."""
+    log = print
+    decisions = _load_json(DECISION_LOG, {})
+    scores = _load_json(SCORES_PATH, {})
+    slugs = sorted(s for s, r in decisions.items() if r.get("verdict") == "pursue")
+    if not slugs:
+        log("nothing pursued yet — tick some jobs and run `python rank.py --decide`")
+        return 0
+
+    jobs, missing = {}, []
+    for slug in slugs:
+        p = JOBS_DIR / f"{slug}.yaml"
+        if not p.exists():
+            missing.append(slug)
+            continue
+        try:
+            jobs[slug] = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception as e:                                   # noqa: BLE001
+            missing.append(f"{slug} ({str(e)[:30]})")
+
+    log(f"\n{len(slugs)} pursued job(s)\n")
+    built_cv, built_letter, kept, regen, failed = 0, 0, [], [], []
+
+    for i, (slug, job) in enumerate(sorted(jobs.items()), 1):
+        variant = variant_for(slug, scores)
+        draft = LETTERS_DIR / f"{slug}.md"
+        need_cv = force or not cv_is_current(job, slug, variant)
+        note = []
+
+        if need_cv:
+            ok, why = _run(["tailor.py", f"jobs/{slug}.yaml", "--variant", variant])
+            if not ok:
+                failed.append((slug, f"cv: {why}"))
+                log(f"  {i:>3}/{len(jobs)}  -- [{variant:<4}] {slug[:48]}   {why}")
+                continue
+            write_stamp(dest_for(job), slug, variant)
+            built_cv += 1
+            note.append("cv")
+            # The letter argues from the facts the CV selected, so a rebuilt CV leaves
+            # an existing draft citing evidence that may no longer be on the page.
+            if draft.exists():
+                if opening_written(draft):
+                    kept.append(slug)                # yours. never touched.
+                else:
+                    supersede(draft)
+                    regen.append(slug)
+
+        if not draft.exists():
+            ok, why = _run(["letter.py", f"jobs/{slug}.yaml"])
+            if ok:
+                built_letter += 1
+                note.append("letter")
+            else:
+                failed.append((slug, f"letter: {why}"))
+                note.append(f"letter FAILED: {why}")
+
+        mark = ", ".join(note) if note else "up to date"
+        log(f"  {i:>3}/{len(jobs)}  ok [{variant:<4}] {slug[:48]}   {mark}")
+
+    log(f"\n{built_cv} CV(s) built, {built_letter} letter draft(s) written")
+    if regen:
+        log(f"\n{len(regen)} draft(s) had an unwritten opening and were rebuilt from the")
+        log(f"new CV's facts. The previous files are in letters/.superseded/ :")
+        for slug in regen[:10]:
+            log(f"    {slug[:60]}")
+    if kept:
+        log(f"\n{len(kept)} letter(s) KEPT because you had written the opening — but the")
+        log("CV underneath was rebuilt, so the proof points they cite may no longer be")
+        log("on the page. Re-check these before sending:")
+        for slug in kept:
+            log(f"    letters/{slug[:56]}.md")
+    if missing:
+        log(f"\n{len(missing)} pursued job(s) have no job file:")
+        for slug in missing[:10]:
+            log(f"    {slug[:60]}")
+    if failed:
+        log(f"\n{len(failed)} failure(s):")
+        for slug, why in failed:
+            log(f"    {slug[:48]}  {why}")
+        return 1
+    log("\nGATE 3 is yours: every letter above needs its opening written by hand.")
+    log("  python status.py            # what is where")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("job", help="path to a job YAML file")
+    ap.add_argument("job", nargs="?",
+                    help="path to a job YAML file; omit to do every pursued job")
     ap.add_argument("--variant", default="ds")
     ap.add_argument("--llm", action="store_true", help="add the LLM selector as challenger")
     ap.add_argument("--explain", action="store_true", help="show per-requirement retrieval")
     ap.add_argument("--include-drafts", action="store_true")
     ap.add_argument("--top-k", type=int, default=6)
+    ap.add_argument("--force", action="store_true",
+                    help="batch mode: rebuild even what is already current")
     args = ap.parse_args()
+
+    # No job named means the whole pursue list. Single-job use is unchanged.
+    if not args.job:
+        return run_batch(args.force)
 
     bank = R.load_bank()
     rc = R.load("render_config.yaml")

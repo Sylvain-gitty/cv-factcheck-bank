@@ -17,10 +17,12 @@ THE STAGE IS DERIVED, NOT DECLARED
 
 There is no status column here to keep up to date, because a status column is a
 second copy of the truth and the copy is always the one that is wrong. You do not
-forget to write out/jobs/<slug>/cv.html -- tailor.py writes it, or it does not
-exist. So every stage below is read off the artefacts themselves:
+forget to write a CV -- tailor.py writes it, or it does not exist. So every stage
+below is read off the artefacts themselves:
 
-    drafted    out/jobs/<slug>/cv.html  AND  letters/<slug>.md
+    drafted    the posting's CV directory  AND  letters/<slug>.md
+               (that directory is named after the POSTING, not the job file, so the
+               path comes from tailor.dest_for rather than from the slug)
     tailored   out/letters/<slug>.html  -- letter.py --render REFUSES to produce
                this while a fatal gate is failing, so its existence is proof a
                human wrote the opening and the checks passed
@@ -42,6 +44,10 @@ import csv
 import json
 import sys
 from pathlib import Path
+
+# Same rule tailor.py uses to name the directory it writes, imported so the
+# board cannot drift from the thing it is reporting on.
+from tailor import dest_for
 
 HERE = Path(__file__).parent
 JOBS = HERE / "jobs"
@@ -89,12 +95,16 @@ def sent_dates() -> dict[str, str]:
     return out
 
 
-def stage_of(slug: str, sent: dict[str, str]) -> tuple[str, str]:
+def stage_of(slug: str, job: dict, sent: dict[str, str]) -> tuple[str, str]:
     """(stage, the next command to run). Derived entirely from what is on disk."""
     if slug in sent:
         return "applied", ""
 
-    cv = (OUT / "jobs" / slug / "cv.html").exists()
+    # The CV directory is named after the POSTING, not the job file, and the two are
+    # only usually the same string. Where they diverge -- a long title truncated in the
+    # filename, say -- assuming the slug reports a built CV as missing and parks the job
+    # at `pursued` forever. Two jobs sat there until this used tailor's own rule.
+    cv = (dest_for(job) / "cv.html").exists()
     draft = LETTERS / f"{slug}.md"
     rendered = (OUT / "letters" / f"{slug}.html").exists() or \
                (OUT / "letters" / f"{slug}.pdf").exists()
@@ -151,7 +161,6 @@ def collect():
     rows = []
     for slug in slugs:
         row = log_data.get(slug, {})
-        stage, nxt = stage_of(slug, sent)
         job = {}
         if slug in jobs:
             try:
@@ -159,6 +168,7 @@ def collect():
                 job = yaml.safe_load(jobs[slug].read_text(encoding="utf-8")) or {}
             except Exception:                                    # noqa: BLE001
                 job = {}
+        stage, nxt = stage_of(slug, job, sent)
         rows.append({
             "stage": stage,
             "slug": slug,

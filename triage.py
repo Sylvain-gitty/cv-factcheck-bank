@@ -81,10 +81,10 @@ try:
 except ImportError:
     sys.exit("PyYAML required:  pip install pyyaml")
 
-# tailor.py names its output directory after the POSTING (company + title), not after
-# the job file. Importing the same function is the only way to be sure this stage looks
-# where that one wrote; recomputing the rule here would drift the first time it changed.
-from tailor import slugify
+# Output-directory naming, variant selection and the freshness stamp all live in
+# tailor.py and are imported, not reimplemented. They decide what this stage measures,
+# and a second copy would drift from the first the moment either changed.
+from tailor import cv_is_current, dest_for, variant_for, write_stamp
 
 HERE = Path(__file__).parent
 JOBS = HERE / "jobs"
@@ -130,33 +130,6 @@ def pursued() -> list[str]:
                   if r.get("verdict") == "pursue")
 
 
-# Archetype -> CV variant. Stage 2b already decided which archetype each posting
-# belongs to, so there is no reason for this stage to guess.
-VARIANT_FOR = {"data-scientist": "ds", "ai-engineer": "ai", "technical-pm": "pm"}
-
-
-def variant_for(slug: str, scores: dict) -> str:
-    """Which CV variant to argue this posting with.
-
-    This is not cosmetic, it decides the coverage number. keyword_coverage measures
-    skills present in the SELECTED bullets, and a variant filters the bank by
-    archetype -- so running the default `ds` variant against a product posting makes
-    every technical-pm fact ineligible and reports `process-improvement` and
-    `team-leadership` as missing while confirmed facts evidencing both sit unselected
-    in the bank. The first run of this stage did exactly that across all 59 postings
-    and produced a skill-gap list whose top entry, at 21 postings, was a fact the bank
-    already had. It understated coverage worst on technical-pm roles, which is the
-    rarest angle here and so the one least able to afford it.
-
-    Ambiguous postings get `span`, which drops the archetype filter -- the variant
-    added for precisely this case, where both single-archetype variants underperform.
-    """
-    sc = scores.get(slug) or {}
-    if not sc.get("archetype_confident", False):
-        return "span"
-    return VARIANT_FOR.get(sc.get("archetype"), "span")
-
-
 def build(slug: str, variant: str) -> tuple[bool, str]:
     """Run tailor.py for one job. Returns (ok, message)."""
     src = JOBS / f"{slug}.yaml"
@@ -170,32 +143,6 @@ def build(slug: str, variant: str) -> tuple[bool, str]:
         tail = (r.stderr or r.stdout or "").strip().splitlines()
         return False, (tail[-1][:60] if tail else f"exit {r.returncode}")
     return True, ""
-
-
-# tailor.py names its output directory after the posting alone, so two CVs argued from
-# different halves of the bank are indistinguishable on disk -- and a CV left over from
-# an earlier week, built with a different variant against an older copy of the posting,
-# reads exactly like a fresh one. That is not hypothetical: the first run of this stage
-# reported Enpal at 8/8 from a fortnight-old directory and 8/14 once rebuilt.
-# So record what produced each directory, and rebuild whenever it does not match.
-STAMP = ".triage.json"
-
-
-def stamp_of(d: Path) -> dict:
-    return load_json(d / STAMP, {})
-
-
-def write_stamp(d: Path, slug: str, variant: str):
-    if d.exists():
-        (d / STAMP).write_text(json.dumps({"slug": slug, "variant": variant}, indent=2),
-                               encoding="utf-8")
-
-
-def needs_build(job: dict, slug: str, variant: str) -> bool:
-    if read_result(job) is None:
-        return True
-    st = stamp_of(dest_dir(job))
-    return st.get("slug") != slug or st.get("variant") != variant
 
 
 def parse_coverage(detail: str) -> tuple[int | None, int | None, list[str]]:
@@ -218,14 +165,9 @@ def parse_coverage(detail: str) -> tuple[int | None, int | None, list[str]]:
             skills)
 
 
-def dest_dir(job: dict) -> Path:
-    """Where tailor.py writes this posting — same rule, imported, not reimplemented."""
-    return OUT / "jobs" / slugify(f"{job.get('company', '')}-{job.get('title', '')}")
-
-
 def read_result(job: dict) -> dict | None:
     """Everything tailor.py already wrote about this job, from a previous run."""
-    d = dest_dir(job)
+    d = dest_for(job)
     checks = load_json(d / "checks.json", None)
     sel = load_json(d / "selection.json", None)
     if checks is None or sel is None:
@@ -268,10 +210,12 @@ def collect(slugs, rebuild: bool):
 
     rows = []
     variants = {s: variant_for(s, scores) for s in jobs}
-    # tailor.py names its output directory after the posting only, so a CV built with a
-    # different variant is indistinguishable on disk. Rebuild rather than trust a
-    # leftover that may have been argued with the wrong half of the bank.
-    todo = [s for s in jobs if rebuild or needs_build(jobs[s], s, variants[s])]
+    # cv_is_current compares the stamp tailor.py leaves against the variant Stage 2b
+    # implies now, because a CV built last week with a different variant is otherwise
+    # indistinguishable from a fresh one: Enpal read 8/8 from a fortnight-old directory
+    # and 8/14 once rebuilt.
+    todo = [s for s in jobs
+            if rebuild or not cv_is_current(jobs[s], s, variants[s])]
     if todo:
         log(f"building {len(todo)} CV(s) — tailor.py, no API, roughly "
             f"{max(1, round(len(todo) * 3 / 60))} min")
@@ -281,7 +225,7 @@ def collect(slugs, rebuild: bool):
     for i, slug in enumerate(todo, 1):
         ok, why = build(slug, variants[slug])
         if ok:
-            write_stamp(dest_dir(jobs[slug]), slug, variants[slug])
+            write_stamp(dest_for(jobs[slug]), slug, variants[slug])
         mark = "ok " if ok else "-- "
         log(f"  {i:>3}/{len(todo)}  {mark}[{variants[slug]:<4}] {slug[:50]}"
             + (f"   {why}" if why else ""))
