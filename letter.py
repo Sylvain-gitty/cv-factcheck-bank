@@ -632,11 +632,22 @@ def build_pack(slug, job, facts, signals, bank) -> str:
     return "\n".join(L)
 
 
-def write_pack(slug, bank, variant="ds") -> int:
+def write_pack(slug, bank, variant=None) -> int:
+    """variant=None means: ask Stage 2b, the same way tailor.py and triage.py do.
+
+    Defaulting to `ds` here silently built every pack from the data-scientist half of
+    the bank. On a product-operations posting that left the Katapult leadership facts
+    out of the brief entirely, so the letter argued from model evaluation for a job
+    about roadmaps and stakeholder loops -- the same class of mistake as running the
+    wrong CV variant, one stage later.
+    """
     path = HERE / "jobs" / f"{slug}.yaml"
     if not path.exists():
         log(f"no job file for {slug}")
         return 1
+    if variant is None:
+        scores = T._load_json(T.SCORES_PATH, {})
+        variant = T.variant_for(slug, scores)
     # load_job, not yaml.safe_load: it derives `requirements` from the description
     # when the posting has none, and select_facts retrieves against exactly that.
     job = T.load_job(path)
@@ -645,7 +656,8 @@ def write_pack(slug, bank, variant="ds") -> int:
     LETTERS.mkdir(exist_ok=True)
     dest = LETTERS / f"{slug}.pack.md"
     dest.write_text(build_pack(slug, job, facts, signals, bank), encoding="utf-8")
-    log(f"  {dest.relative_to(HERE)}   {len(facts)} fact(s), {len(signals)} hook(s)")
+    log(f"  {dest.relative_to(HERE)}   [{variant}]  {len(facts)} fact(s), "
+        f"{len(signals)} hook(s)")
     return 0
 
 
@@ -667,7 +679,9 @@ def main() -> int:
     if args.pack:
         rc = 0
         for slug in args.pack:
-            rc |= write_pack(slug, bank, args.variant)
+            # only override the Stage 2b choice if the caller actually asked
+            rc |= write_pack(slug, bank,
+                             args.variant if "--variant" in sys.argv else None)
         return rc
 
     if args.list:
