@@ -68,6 +68,21 @@ HERE = Path(__file__).parent
 LETTERS = HERE / "letters"
 OUT = HERE / "out" / "letters"
 
+# THE HUMAN GATE, MOVED RATHER THAN REMOVED.
+#
+# This pipeline used to refuse to write the opening at all, on the grounds that the
+# first two sentences are the only part of a motivation letter reliably read closely,
+# and a model writes competent forgettable ones. That held while the alternative was
+# writing three letters a week. It does not survive fifty-seven.
+#
+# So the gate moves from "you wrote it" to "you read it and said yes". The line below
+# sits in every draft and every fatal check fails while it reads `no`. Same mechanism
+# as `status: draft` on a fact: the thing you must do by hand is enforced by the data
+# rather than by your memory at 11pm. What is NOT preserved is the guarantee that the
+# voice is yours -- only that you had to look at it before it could go anywhere.
+APPROVAL_LINE = "<!-- APPROVED: no -->"
+APPROVAL_RE = r"<!--\s*APPROVED:\s*(yes|no)\s*-->"
+
 TODO_BLOCK = """<!-- OPENING: WRITE THIS YOURSELF. The checks fail while this block is here.
      Two or three sentences. Name something specific about THIS company that you
      actually noticed, and say plainly why it made you look twice. Not "I am excited
@@ -294,6 +309,9 @@ def build_draft(job, facts, signals, llm_body=None) -> str:
         "",
         f"<!-- job: {job.get('url')} -->",
         f"<!-- generated: {date.today().isoformat()} -->",
+        APPROVAL_LINE,
+        "<!--   ^ change to `yes` when this letter is ready to send. Every fatal",
+        "        check fails until you do. Edit the text first if it needs it. -->",
         "",
         TODO_BLOCK,
         "",
@@ -369,6 +387,15 @@ def call_llm(prompt: str):
 
 # --------------------------------------------------------------------------- checks
 
+# A pack is scaffolding for writing a letter, not a letter. It quotes the posting and
+# the facts verbatim, so leaving packs in these globs makes every letter look similar
+# to its own brief and pollutes the one measurement that is supposed to catch
+# boilerplate.
+def letter_files(exclude: str | None = None):
+    return [p for p in sorted(LETTERS.glob("*.md"))
+            if not p.name.endswith(".pack.md") and p.stem != exclude]
+
+
 def prose_of(text: str) -> str:
     """The letter without comments, headings or rules -- what a reader actually sees."""
     body = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
@@ -391,9 +418,19 @@ def run_checks(slug, text, job, bank):
     def add(name, ok, detail, fatal=True):
         checks.append({"check": name, "pass": ok, "detail": detail, "fatal": fatal})
 
-    add("opening_is_yours", "OPENING: WRITE THIS YOURSELF" not in text,
-        "you have written the opening" if "OPENING: WRITE THIS YOURSELF" not in text
-        else "the TODO block is still there -- this is the one thing you must do by hand")
+    m = re.search(APPROVAL_RE, text)
+    approved = bool(m) and m.group(1).lower() == "yes"
+    add("approved", approved,
+        "you approved this letter" if approved
+        else ("no APPROVED line -- add `<!-- APPROVED: yes -->` once you have read it"
+              if not m else
+              "APPROVED is still `no` -- read the letter, edit if needed, then flip it"))
+
+    # Approving a letter that still contains the placeholder is not a decision, it is
+    # a slip. Kept fatal so the two cannot be confused.
+    add("opening_written", "OPENING: WRITE THIS YOURSELF" not in text,
+        "clean" if "OPENING: WRITE THIS YOURSELF" not in text
+        else "the placeholder block is still in the file")
 
     sigs = all_signals(job, bank)
     hit = next((s for s in sigs if s.lower() in first_two.lower()), None)
@@ -405,7 +442,7 @@ def run_checks(slug, text, job, bank):
     add("no_dead_openers", not dead, "clean" if not dead else f"opens with '{dead}'")
 
     prev = [(p.stem, prose_of(p.read_text(encoding="utf-8")))
-            for p in LETTERS.glob("*.md") if p.stem != slug]
+            for p in letter_files(exclude=slug)]
     worst = max(((cosine(prose, t), s) for s, t in prev), default=(0.0, None))
     add("genericness", worst[0] < 0.75,
         f"most similar previous letter: {worst[1] or 'none yet'} at {worst[0]:.2f}"
@@ -417,7 +454,13 @@ def run_checks(slug, text, job, bank):
         f"{f.get('outcome_short') or ''} "
         + " ".join(str(m.get('value')) for m in (f.get('metrics') or []))
         for f in facts)
-    unsourced = [n for n in re.findall(r"\d[\d,.]*", prose) if n not in src]
+    # Strip trailing punctuation before comparing. The pattern is greedy over "." and
+    # "," so it swallows the full stop that ends a sentence: "0.610." never matches the
+    # "0.610" in its fact, and a correctly sourced number fails the check. A gate that
+    # fires on correct input is worse than no gate, because the habit it teaches is
+    # overriding it.
+    nums = [n.rstrip(".,") for n in re.findall(r"\d[\d,.]*", prose)]
+    unsourced = [n for n in nums if n and n not in src]
     add("numeric_integrity", not unsourced,
         f"{len(facts)} fact(s) cited, every number traced" if not unsourced
         else f"numbers with no cited source: {unsourced[:5]}")
@@ -465,6 +508,111 @@ def render_letter(slug, text, job, bank):
 
 # --------------------------------------------------------------------------- driver
 
+PACK_RULES = """\
+## What to produce
+
+Write the COMPLETE letter into `letters/{slug}.md`, replacing the placeholder block.
+Keep the HTML comments that are already there (the job line, the generated date, the
+APPROVED line). Leave `APPROVED: no` -- flipping it is the reader's decision, not
+yours.
+
+Structure: an opening of two or three sentences, two or three proof paragraphs, a
+close of two sentences. 250-400 words of prose, not counting comments.
+
+## Hard rules
+
+1. EVERY claim about the candidate must come from the facts listed below. No
+   achievement, number, employer, date or technology that is not in them. This is the
+   whole premise of the fact bank: generation is retrieval, and retrieval is checkable.
+2. Cite the fact behind each proof paragraph with a trailing `<!-- f-id -->`. The
+   numeric_integrity check reads those comments to verify every number in the prose,
+   and a number with no cited source fails the build.
+3. Numbers must match their fact EXACTLY. Not rounded, not "over", not "nearly".
+4. Nothing from the deny list, in any form.
+5. The opening must name something specific and true about THIS company, verified
+   against a source you actually read -- not inferred from the company name. Being
+   confidently specific about the wrong company is the worst failure available here.
+   If you could not verify anything, say so in the pack rather than inventing.
+6. Do not open with "I am writing to apply" or any of its relatives.
+7. Do not resemble the previous openings quoted at the end; the genericness check
+   fails above 0.75 cosine against any earlier letter.
+"""
+
+
+def build_pack(slug, job, facts, signals, bank) -> str:
+    """Everything needed to write this letter, in one file.
+
+    The pack exists so the writing step is separable from who does it. Today that is
+    an assistant in a session; with an API key it is the same text as a prompt. The
+    one thing it deliberately does NOT contain is company research -- that has to come
+    from actually reading the company's own pages, and a pack that pre-filled it from
+    the posting would quietly reintroduce the guesswork it is meant to replace.
+    """
+    deny = bank["profile"].get("deny_list", {}).get("terms", [])
+    L = [f"# Briefing — {job.get('title')} at {job.get('company') or '?'}", "",
+         f"- slug: `{slug}`",
+         f"- location: {job.get('location') or 'unstated'}",
+         f"- posting: {job.get('url')}",
+         f"- language: {job.get('language') or 'en'}", "",
+         PACK_RULES.replace("{slug}", slug), "",
+         "## Research to do first", "",
+         "Find the company's own site and read what they say about themselves. Confirm",
+         "it is the right company -- match it against the posting's own details before",
+         "using anything from it. Look for what makes them specific: what they build,",
+         "who for, how they talk about it, anything recent and concrete.", "",
+         "## Facts you may use (and nothing else)", ""]
+    for f in facts:
+        claim = R.clean(f.get("claim") or "")
+        out = R.clean(f.get("outcome") or "")
+        L.append(f"### `{f['id']}`")
+        L.append(claim + (f" {out}" if out else ""))
+        bits = []
+        if f.get("skills"):
+            bits.append("skills: " + ", ".join(f["skills"]))
+        if f.get("contribution"):
+            bits.append(f"contribution: {f['contribution']}")
+        if f.get("scope"):
+            bits.append(f"scope: {f['scope']}")
+        if bits:
+            L.append("")
+            L.append("_" + " · ".join(bits) + "_")
+        L.append("")
+    L += ["## Never write these", "", ", ".join(f"`{t}`" for t in deny), "",
+          "## Proper nouns found in the posting", "",
+          (" · ".join(signals[:14]) if signals else "_none found — read the posting_"),
+          "", "## The posting", "", "```",
+          str(job.get("description") or "").strip(), "```", ""]
+
+    prev = []
+    for p in letter_files(exclude=slug):
+        txt = p.read_text(encoding="utf-8")
+        if "OPENING: WRITE THIS YOURSELF" in txt:
+            continue                       # still a stub; nothing to be generic against
+        opening = " ".join(re.split(r"(?<=[.!?])\s+", prose_of(txt))[:2])
+        if opening.strip():
+            prev.append(f"- **{p.stem}** — {opening.strip()[:220]}")
+    if prev:
+        L += ["## Openings already used — do not resemble these", ""] + prev + [""]
+    return "\n".join(L)
+
+
+def write_pack(slug, bank, variant="ds") -> int:
+    path = HERE / "jobs" / f"{slug}.yaml"
+    if not path.exists():
+        log(f"no job file for {slug}")
+        return 1
+    # load_job, not yaml.safe_load: it derives `requirements` from the description
+    # when the posting has none, and select_facts retrieves against exactly that.
+    job = T.load_job(path)
+    facts = select_facts(bank, job, variant, top=8)
+    signals = all_signals(job, bank)
+    LETTERS.mkdir(exist_ok=True)
+    dest = LETTERS / f"{slug}.pack.md"
+    dest.write_text(build_pack(slug, job, facts, signals, bank), encoding="utf-8")
+    log(f"  {dest.relative_to(HERE)}   {len(facts)} fact(s), {len(signals)} hook(s)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("job", nargs="?", help="path to a job YAML")
@@ -473,13 +621,21 @@ def main() -> int:
     ap.add_argument("--check", metavar="SLUG")
     ap.add_argument("--render", metavar="SLUG")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--pack", nargs="+", metavar="SLUG",
+                    help="write a briefing pack per slug for whoever writes the letter")
     args = ap.parse_args()
 
     bank = R.load_bank()
     LETTERS.mkdir(exist_ok=True)
 
+    if args.pack:
+        rc = 0
+        for slug in args.pack:
+            rc |= write_pack(slug, bank, args.variant)
+        return rc
+
     if args.list:
-        for p in sorted(LETTERS.glob("*.md")):
+        for p in letter_files():
             done = "OPENING: WRITE THIS YOURSELF" not in p.read_text(encoding="utf-8")
             log(f"  [{'ready ' if done else 'needs opening'}] {p.stem}")
         return 0
