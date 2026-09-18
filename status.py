@@ -23,9 +23,11 @@ below is read off the artefacts themselves:
     drafted    the posting's CV directory  AND  letters/<slug>.md
                (that directory is named after the POSTING, not the job file, so the
                path comes from tailor.dest_for rather than from the slug)
-    tailored   out/letters/<slug>.html  -- letter.py --render REFUSES to produce
-               this while a fatal gate is failing, so its existence is proof a
-               human wrote the opening and the checks passed
+    tailored   out/letters/<slug>.html, NEWER than letters/<slug>.md -- --render
+               refuses to produce it while a fatal gate is failing, so it proves
+               the checks passed; the freshness test is because out/ survives
+               edits to the draft, and a render from a previous week is not a
+               render of what the draft now says
     applied    a sent_date in applications.csv
 
 Exactly one of those cannot be derived, and it is the last one. Sending is an act
@@ -106,8 +108,18 @@ def stage_of(slug: str, job: dict, sent: dict[str, str]) -> tuple[str, str]:
     # at `pursued` forever. Two jobs sat there until this used tailor's own rule.
     cv = (dest_for(job) / "cv.html").exists()
     draft = LETTERS / f"{slug}.md"
-    rendered = (OUT / "letters" / f"{slug}.html").exists() or \
-               (OUT / "letters" / f"{slug}.pdf").exists()
+    # A RENDER OLDER THAN ITS SOURCE IS NOT A RENDER. out/letters/ survives edits to
+    # letters/*.md, so a stale HTML/PDF from a previous week keeps reporting `tailored`
+    # while the draft underneath has been rewritten -- or, as happened here, replaced
+    # by an unwritten stub whose .md source had been lost entirely. package.py copies
+    # the rendered file, so the stale one would have been the one that got sent.
+    rendered = False
+    if draft.exists():
+        for _ext in ("html", "pdf"):
+            _out = OUT / "letters" / f"{slug}.{_ext}"
+            if _out.exists() and _out.stat().st_mtime >= draft.stat().st_mtime:
+                rendered = True
+                break
     packaged = (OUT / "applications" / slug).exists()
 
     if packaged:
