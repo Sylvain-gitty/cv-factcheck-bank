@@ -528,13 +528,31 @@ close of two sentences. 250-400 words of prose, not counting comments.
    numeric_integrity check reads those comments to verify every number in the prose,
    and a number with no cited source fails the build.
 3. Numbers must match their fact EXACTLY. Not rounded, not "over", not "nearly".
-4. Nothing from the deny list, in any form.
-5. The opening must name something specific and true about THIS company, verified
+4. MOST METRICS DO NOT BELONG IN THE PROSE. A reader who does not know the project
+   cannot tell whether 0.693 against 0.610 is a large gap or a rounding error, and
+   the letter has no room to explain what was being ranked. So state what the result
+   MEANT and let the cited fact carry the number:
+
+     not  "reached 0.693 ROC-AUC and beat every supervised model at 0.610"
+     but  "the simplest method, with no training at all, beat every model we
+           trained -- which changed what was worth building"
+
+   The test is whether a stranger can tell why the sentence matters. Numbers for
+   SCALE, COST, DURATION or TEAM SIZE pass it -- 62,229 papers, $16.10, four months,
+   twenty-five people all mean something immediately. Numbers for MODEL PERFORMANCE
+   -- ROC-AUC, F2, precision, recall -- almost never do. At most one performance
+   figure per letter, and only where the sentence around it makes the scale obvious.
+
+   This does not weaken the guarantee. The claim still comes from a cited fact and
+   still has to be defensible in the interview; it is the presentation that changes.
+   The point of the fact bank was never that the letter is quantitative.
+5. Nothing from the deny list, in any form.
+6. The opening must name something specific and true about THIS company, verified
    against a source you actually read -- not inferred from the company name. Being
    confidently specific about the wrong company is the worst failure available here.
    If you could not verify anything, say so in the pack rather than inventing.
-6. Do not open with "I am writing to apply" or any of its relatives.
-7. Do not resemble the previous openings quoted at the end; the genericness check
+7. Do not open with "I am writing to apply" or any of its relatives.
+8. Do not resemble the previous openings quoted at the end; the genericness check
    fails above 0.75 cosine against any earlier letter.
 """
 
