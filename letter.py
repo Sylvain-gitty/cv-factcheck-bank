@@ -519,6 +519,24 @@ yours.
 Structure: an opening of two or three sentences, two or three proof paragraphs, a
 close of two sentences. 250-400 words of prose, not counting comments.
 
+THE SHAPE THAT WORKS, from the two letters in the first batch that read best
+(glassflow-ai-engineer and n26-technical-product-manager-applied-machine-learning):
+
+  - Open on a STRUCTURAL CHOICE the company made -- something they built or decided,
+    not something they claim about themselves. "Rius keeps every trace rather than
+    capping at thirty days." "IOP builds the capability once, horizontally, rather
+    than shipping a model per team." Then say what that choice implies about how
+    they think. Then claim the resulting problem: that is the problem I would want
+    to own.
+  - End every evidence paragraph by bending back to THEIR situation. Not "here is
+    what I did" but "here is the version of that you have." A paragraph that stops
+    at the achievement is a CV bullet with more words around it.
+  - Short declarative sentences. One memorable clause closing each paragraph. A
+    two-sentence close, concrete, no flourish.
+  - The company fact in the opening must be checkable on their own site, and the
+    first two sentences must contain a proper noun from the posting -- the
+    company_specific gate reads only those two.
+
 ## Hard rules
 
 1. EVERY claim about the candidate must come from the facts listed below. No
@@ -672,7 +690,13 @@ def main() -> int:
         log(f"\nCHECKS — {slug}")
         for c in checks:
             mark = "ok  " if c["pass"] else ("FAIL" if c["fatal"] else "warn")
-            log(f"  [{mark}] {c['check']:<18} {c['detail'][:74]}")
+            # Truncating at a fixed width cut the score off the end of the
+            # genericness line whenever the compared slug was long -- hiding the one
+            # number that check exists to report. Wrap instead of clipping.
+            detail = c["detail"]
+            log(f"  [{mark}] {c['check']:<18} {detail[:74]}")
+            for i in range(74, len(detail), 74):
+                log(f"  {'':<7} {'':<18} {detail[i:i + 74]}")
         blocked = [c for c in checks if not c["pass"] and c["fatal"]]
         if args.render:
             if blocked:
