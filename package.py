@@ -227,7 +227,8 @@ def assemble(slug) -> int:
         rows.append({"slug": slug, "company": job.get("company") or "",
                      "title": job.get("title") or "", "source": job.get("source") or "",
                      "archetype": scores.get("archetype") or "",
-                     "batch_score": scores.get("relative", ""), "cv_variant": "ds",
+                     "batch_score": scores.get("relative", ""),
+                     "cv_variant": T.built_variant(job),
                      "letter": "yes", "sent_date": "", "first_reply_date": "",
                      "status": "ready", "notes": ""})
         TR.write_rows(rows)

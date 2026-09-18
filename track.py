@@ -54,6 +54,7 @@ except ImportError:
     sys.exit("PyYAML required:  pip install pyyaml")
 
 import render as R
+import tailor as T
 
 HERE = Path(__file__).parent
 JOBS = HERE / "jobs"
@@ -160,7 +161,8 @@ def add(slug: str) -> int:
     rows.append({
         "slug": slug, "company": job.get("company") or "", "title": job.get("title") or "",
         "source": job.get("source") or "", "archetype": scores.get("archetype") or "",
-        "batch_score": scores.get("relative", ""), "cv_variant": "ds", "letter": "",
+        "batch_score": scores.get("relative", ""),
+        "cv_variant": T.built_variant(job), "letter": "",
         "sent_date": date.today().isoformat(), "first_reply_date": "",
         "status": "sent", "notes": "",
     })

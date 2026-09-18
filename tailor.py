@@ -542,6 +542,22 @@ def write_stamp(d: Path, slug: str, variant: str):
                                encoding="utf-8")
 
 
+def built_variant(job: dict) -> str:
+    """Which variant actually produced the CV on disk, from its stamp.
+
+    Recorded rather than assumed. package.py and track.py both used to write
+    cv_variant="ds" into applications.csv regardless of what was built, which made
+    track.py's own breakdown by CV variant meaningless: it counts variants to warn you
+    when they have churned too fast to attribute anything, and a constant would have
+    told you the opposite of the truth. On the first seven applications the real
+    variants were four span and two pm, and not one was ds.
+
+    Returns "" when nothing is recorded. An empty cell reads as unknown; "ds" would
+    read as a measurement.
+    """
+    return str(stamp_of(dest_for(job)).get("variant") or "")
+
+
 def cv_is_current(job: dict, slug: str, variant: str) -> bool:
     d = dest_for(job)
     if not (d / "checks.json").exists():
