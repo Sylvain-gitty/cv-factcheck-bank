@@ -163,6 +163,46 @@ def is_german(text: str) -> bool:
 BRANDISH = re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]+|[a-z][A-Z][A-Za-z0-9]*)\b")
 
 
+# Posting furniture. None of these is ever a company signal, however it is capitalised:
+# section headers, HR vocabulary, benefit-provider names, difficulty labels. The
+# lowercase test below catches most noise on its own, but only when the word happens to
+# recur in lowercase -- on a short posting it does not, which is how WORK and OFFER
+# reached a hook list.
+NOISE = {
+    "work", "offer", "offers", "looking for", "experience", "experiences",
+    "opportunity", "opportunities", "commitment", "diversity", "inclusion",
+    "inclusive hiring", "disclosure", "execution", "ownership", "value", "values",
+    "members", "member", "policy", "security", "legal", "benefits", "requirements",
+    "responsibilities", "tasks", "things", "thing", "type", "make", "translate",
+    "verification", "easy", "hard", "very hard", "senior", "junior", "lead",
+    "manager", "engineer", "engineering", "sales", "transparency", "growth",
+    "impact", "mission", "vision", "culture", "perks", "salary", "compensation",
+    "equity", "stock option grant", "virtual stock option", "enrolment",
+    "corporate", "startups", "services gmbh", "gmbh", "learning", "development",
+    "flexibility", "wellbeing", "note", "urban sports club", "own", "deliver",
+    "betriebliche altersvorsorge", "build", "ensure", "drive", "support",
+    "collaborate", "partner", "next steps", "application", "interview",
+}
+
+
+def is_ordinary_word(span: str, desc: str) -> bool:
+    """Does this span also appear in lowercase in the posting?
+
+    A NAME IS NOT ALSO AN ORDINARY WORD. "Sequoia", "Terminal-Bench" and "GLS" never
+    appear lowercase in the text that names them; "Work", "Engineer", "Execution" and
+    "Diversity" almost always do, because the posting also uses them as plain words.
+    That asymmetry separates a name from a shouted heading or a capitalised bullet verb
+    far more reliably than counting capitals does.
+
+    Single-word spans only. "Deutsche Telekom" would never match anyway, and testing
+    each word separately would discard real names containing a common word.
+    """
+    if " " in span:
+        return False
+    # Case-SENSITIVE: only a genuine lowercase occurrence counts as evidence.
+    return bool(re.search(rf"{re.escape(span.lower())}", desc))
+
+
 def company_signals(job: dict, bank=None) -> list[str]:
     """Proper nouns and product names from the posting itself.
 
@@ -216,12 +256,16 @@ def company_signals(job: dict, bank=None) -> list[str]:
             low = c.lower()
             if len(c) < 3 or low in generic or low in banned or low == company.lower():
                 continue
-            # ALL-CAPS SECTION HEADERS ("BRING", "OFFER", "WHAT WE VALUE") are shouted
-            # ordinary words, not names. An acronym like ERP or SCM never appears in
-            # lowercase in the same text; a shouted word does. Same test as the
-            # sentence-initial rule: does it behave like a name elsewhere?
-            if c.isupper() and len(c) > 3 and re.search(
-                    rf"{re.escape(c.lower())}", desc.lower().replace(c.lower(), "", 1)):
+            if low in NOISE:
+                continue
+            # A MULTI-WORD ALL-CAPS SPAN IS A SECTION HEADER, always: "LOOKING FOR",
+            # "INCLUSIVE HIRING", "WHAT WE OFFER". A single short all-caps token is the
+            # opposite -- GLS, IOP, OOH, RWTH, FACS are exactly the hooks worth having --
+            # so only the multi-word form goes.
+            if c.isupper() and " " in c:
+                continue
+            # And the general case: a name does not also appear as a plain lowercase word.
+            if is_ordinary_word(c, desc):
                 continue
             cw = words(c)
             # A span built only from words already in the job title says nothing about the
