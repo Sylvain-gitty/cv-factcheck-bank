@@ -532,8 +532,36 @@ body { line-height: 1.5; max-width: 175mm; margin: 0 auto; padding: 6mm; }
 .to { margin: 9mm 0 7mm; font-size: 9.8pt; color: #333; }
 .to b { color: #000; }
 p { margin: 0 0 3.4mm; text-align: justify; }
+.greeting { margin-bottom: 4.6mm; }
 .sig { margin-top: 9mm; }
 """
+
+
+def salutation(job: dict) -> str:
+    """"Dear <Company> hiring team," -- built here rather than written into each draft.
+
+    It is document furniture, like the date block and the signature: the same sentence
+    every time, derived from the posting. Putting it in the renderer means it cannot
+    drift letter to letter, needs no re-approval when it changes, and stays out of the
+    word count -- the length gate measures what was actually written, and boilerplate
+    padding it would defeat the point of the gate.
+
+    A trailing parenthetical is dropped because job boards append them to the employer
+    field: the posting for LILT carries "LILT (Production)", and "Dear LILT (Production)
+    hiring team" reads like a mail merge that went wrong. Where the board gives no
+    company at all -- several aggregator postings do not -- the name is simply left out
+    rather than guessed, since a greeting addressed to the wrong company is worse than
+    one addressed to nobody in particular.
+    """
+    company = re.sub(r"\s*\([^)]*\)\s*$", "", str(job.get("company") or "")).strip()
+    # Boards also append the full legal entity after a dash -- "ubitricity - Gesellschaft
+    # fuer verteilte Energiesysteme mbH". Only trim when the tail actually ends in a legal
+    # form, so a real name containing a dash survives.
+    company = re.sub(
+        r"\s+[-\u2013]\s+.*\b(?:mbH|GmbH|AG|SE|KG|e\.?V\.?|Ltd\.?|Inc\.?|B\.?V\.?|"
+        r"S\.?A\.?|N\.?V\.?|Oy|AB|A/S|Sp\.? z o\.?o\.?)\.?$",
+        "", company).strip()
+    return f"Dear {company} hiring team," if company else "Dear hiring team,"
 
 
 def render_letter(slug, text, job, bank):
@@ -558,6 +586,7 @@ def render_letter(slug, text, job, bank):
             f"<div class='to'>{R.esc(job.get('company') or '')}<br>"
             f"<b>Re: {R.esc(job.get('title'))}</b><br>"
             f"{date.today().strftime('%d %B %Y')}</div>"
+            f"<p class='greeting'>{R.esc(salutation(job))}</p>"
             f"{paras}<div class='sig'>{R.esc(owner.get('name'))}</div>"
             f"</body></html>")
     OUT.mkdir(parents=True, exist_ok=True)
