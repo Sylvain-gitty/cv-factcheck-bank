@@ -10,6 +10,8 @@ scoring, tailoring, letter gates, rendering) and, from step 6, serves the review
     POST /draft       Stages 3+4: CV + letter draft for pursued jobs ('pursued' -> 'ready_for_review')
     GET  /pdf/pending · POST /pdf/{id}/done        the Windows notifier prints PDFs with Edge
     GET  /reminders/due · POST /reminders/shown    the Windows notifier announces follow-ups
+    POST /report/snapshot                          weekly report snapshot (n8n), if one is due
+    GET  /report/pending · POST /report/notified   the Windows notifier announces it
     GET  /validate    fact-bank integrity (validate.py)
     POST /digests     n8n records the result of a pipeline run (ok or failed)
     GET  /digests/latest · GET /digests/pending · POST /digests/notified
@@ -59,6 +61,7 @@ sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo r
 import applications as apps           # noqa: E402
 import digests                        # noqa: E402
 import inbox                          # noqa: E402
+import report                         # noqa: E402
 import review                         # noqa: E402
 from discovery import run_discovery    # noqa: E402
 from drafting import run_drafting      # noqa: E402
@@ -257,7 +260,7 @@ ALLOWED_HOSTS = {f"localhost:{APP_PORT}", f"127.0.0.1:{APP_PORT}"}
 ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
 # Exact paths and "/"-terminated prefixes only. A bare startswith("/digest") also matched
 # the bearer API's /digests, and refused every digest n8n tried to record (step 6 bug).
-UI_EXACT = {"/", "/review", "/applications", "/digest"}
+UI_EXACT = {"/", "/review", "/applications", "/report", "/digest"}
 UI_PREFIXES = ("/ui/", "/static/")
 
 
@@ -296,7 +299,7 @@ def home():
 
 @app.get("/static/{name}", include_in_schema=False)
 def static(name: str):
-    if name not in {"app.js", "app.css", "review.js", "applications.js"}:
+    if name not in {"app.js", "app.css", "review.js", "applications.js", "report.js"}:
         raise HTTPException(status_code=404)
     return FileResponse(STATIC / name, headers={"Cache-Control": "no-store"})
 
@@ -599,3 +602,31 @@ class ShownIn(BaseModel):
 @app.post("/reminders/shown", dependencies=[Depends(require_token)])
 def reminders_shown(body: ShownIn) -> dict:
     return {"marked": apps.reminders_shown(DATABASE_URL, body.ids)}
+
+
+
+# --------------------------------------------------------------------------- report (Stage 6)
+
+@app.get("/report", include_in_schema=False)
+def report_page():
+    return FileResponse(STATIC / "report.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/ui/api/report")
+def ui_report() -> dict:
+    return report.compute(DATABASE_URL)
+
+
+@app.post("/report/snapshot", dependencies=[Depends(require_token)])
+def report_snapshot() -> dict:
+    return report.snapshot_if_due(DATABASE_URL)
+
+
+@app.get("/report/pending", dependencies=[Depends(require_token)])
+def report_pending() -> dict:
+    return {"reports": report.pending(DATABASE_URL)}
+
+
+@app.post("/report/notified", dependencies=[Depends(require_token)])
+def report_notified(body: ShownIn) -> dict:
+    return {"marked": report.mark_notified(DATABASE_URL, body.ids)}

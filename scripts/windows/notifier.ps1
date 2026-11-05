@@ -2,7 +2,8 @@
 Job engine desktop helper. Runs on the Windows host and does three things:
   1. shows a Windows notification when a pipeline run has recorded a digest (or failed),
      and when the engine cannot be reached;
-  2. announces follow-ups that are due (day 7 / day 14 after you sent an application);
+  2. announces follow-ups that are due (day 7 / day 14 after you sent an application)
+     and the weekly report;
   3. prints queued application PDFs with Edge, exactly as V1 did. The API container has
      no browser and none of the CV's fonts, so the PDF you send is made here.
 Nothing leaves this machine: it only talks to the local factbank-api on 127.0.0.1:8000.
@@ -150,6 +151,15 @@ function Announce-FollowUps {
     [void](Invoke-Api POST "/reminders/shown" @{ ids = @($due | ForEach-Object { [int64]$_.id }) })
 }
 
+# ------------------------------------------------------------------ weekly report
+
+function Announce-Report {
+    $r = @((Invoke-Api GET "/report/pending").reports)
+    if ($r.Count -eq 0) { return }
+    Show-Toast "Weekly report: $($r[0].headline)" @($r[0].detail) "report" "http://localhost:8000/report" "Open report"
+    [void](Invoke-Api POST "/report/notified" @{ ids = @($r | ForEach-Object { [int64]$_.id }) })
+}
+
 if ($Test) {
     Show-Toast "Job engine notifier works" @("Click to open the digest page.") "test"
     exit 0
@@ -163,6 +173,7 @@ while ($true) {
         Check
         Print-Pdfs
         Announce-FollowUps
+        Announce-Report
         if ($warned) { Show-Toast "Job engine reachable again" @("The stack is back up.") "reach" }
         $misses = 0; $warned = $false
     } catch {

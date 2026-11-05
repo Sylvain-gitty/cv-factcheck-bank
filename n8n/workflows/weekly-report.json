@@ -1,0 +1,67 @@
+{
+  "id": "jeWeeklyReport01",
+  "name": "Job engine — weekly report (Stage 6)",
+  "nodes": [
+    {
+      "id": "f5b4a0e6-0001-4e00-9000-000000000001",
+      "name": "On n8n startup",
+      "type": "n8n-nodes-base.n8nTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": { "events": ["init"] }
+    },
+    {
+      "id": "f5b4a0e6-0002-4e00-9000-000000000002",
+      "name": "Every day 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 160],
+      "notes": "Only asks. The API stores a snapshot only when the last one is 7+ days old, so a PC that was off on 'report day' still gets one at the next startup.",
+      "parameters": { "rule": { "interval": [ { "field": "days", "triggerAtHour": 9 } ] } }
+    },
+    {
+      "id": "f5b4a0e6-0003-4e00-9000-000000000003",
+      "name": "Run now (manual)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 320],
+      "parameters": {}
+    },
+    {
+      "id": "f5b4a0e6-0004-4e00-9000-000000000004",
+      "name": "Snapshot if due",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 160],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTBANK_API_URL }}/report/snapshot",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "=Bearer {{ $env.FACTBANK_API_TOKEN }}" },
+          { "name": "Connection", "value": "close" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": { "timeout": 60000 }
+      }
+    }
+  ],
+  "connections": {
+    "On n8n startup": { "main": [ [ { "node": "Snapshot if due", "type": "main", "index": 0 } ] ] },
+    "Every day 09:00": { "main": [ [ { "node": "Snapshot if due", "type": "main", "index": 0 } ] ] },
+    "Run now (manual)": { "main": [ [ { "node": "Snapshot if due", "type": "main", "index": 0 } ] ] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "errorWorkflow": "jeErrorAlerts001",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {}
+}

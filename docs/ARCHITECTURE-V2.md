@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–9 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–9 and 11 done (branch `rebuild/n8n-engine`). Step 10 (LLM) parked.**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -83,6 +83,26 @@ Applications (step 9): http://localhost:8000/applications.
   recorded, but never counted as replies.
 - V1 applications sent in September have no follow-ups scheduled, so they don't fire
   retroactively.
+
+Report (step 11): http://localhost:8000/report, computed live from Postgres with V1's rules:
+- **No rate below 25 resolved applications**, only the interval, for scale.
+- **21-day censoring:** no reply inside the window is not yet a rejection.
+- **Wilson 95% intervals** on every proportion, and an overlap verdict on every breakdown.
+- **CV-variant churn warning.**
+
+One change from V1: it reports **any reply** (rejections included) and **interview or offer**
+separately. V1 folded rejections that had a reply date into its single "response rate".
+
+Also on the screen:
+- **Last 7 days:** discovered, decided, pursued, approved, sent, replies.
+- **The funnel.**
+- **Skills postings asked for that no fact evidences**, counted across every pursued job's CV.
+- **Your Gate 1 pursue share per role profile.**
+
+The **weekly report** workflow asks for a snapshot at startup and daily at 09:00. The API stores
+one only when the last is 7+ days old, and the desktop helper announces it. Snapshots accumulate
+in `report_snapshots`, so the metrics become a time series. Chart colours are validated with the
+dataviz checks: light `#1f5fae` on white, dark `#5b95e6` on `#20201d`.
 
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.
@@ -174,7 +194,7 @@ Each step: I propose → you confirm → I build → I show it working → you v
 
 ### Week 3: smarter + safer
 10. **LLM steps in n8n.** Re-rank top N (structured output) and an optional letter middle. Both stay challengers, and generated text never bypasses the gates
-11. **Tracking.** Outcome buttons, weekly report (Wilson intervals, censoring kept), funnel view
+11. **Tracking.** Report screen (Wilson intervals, censoring kept, any-reply vs interview), funnel, skill gaps, weekly snapshot + notification
 12. **Reliability.** Error workflow, daily heartbeat, Postgres backup, rate-limit / cost caps
 13. **Hardening + docs.** End-to-end test on real jobs, README/ONBOARDING rewritten. Buffer for slippage
 

@@ -3,6 +3,7 @@
   --accent: #1f5fae; --accent-soft: #e6eefa; --pursue: #1d7a46; --pursue-soft: #e3f3ea;
   --danger: #a8261b; --warn: #8a5a00; --warn-soft: #fbf1dc; --focus: #1f5fae;
   --shadow: 0 1px 2px rgba(0,0,0,.06);
+  --viz: #1f5fae; --viz-soft: #c9d9f1; --track: #ecece7;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -10,6 +11,7 @@
     --accent: #8ab8ff; --accent-soft: #1d2a3d; --pursue: #6fd39b; --pursue-soft: #173326;
     --danger: #ff8a7d; --warn: #e7b65c; --warn-soft: #3a2e16; --focus: #8ab8ff;
     --shadow: none;
+    --viz: #5b95e6; --viz-soft: #2b3d58; --track: #2c2c28;
   }
 }
 * { box-sizing: border-box; }
@@ -177,3 +179,26 @@ details > summary.sec-title { cursor: pointer; }
 input[type=date] { padding: 4px 8px; }
 .outcomes { display: flex; gap: 6px; flex-wrap: wrap; }
 .note-input { flex: 1; min-width: 200px; }
+
+/* ------------------------------------------------------------------ report screen */
+.report { padding-bottom: 40px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tile .l { font-size: 12.5px; color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+         display: flex; flex-direction: column; gap: 8px; }
+.hero { font-size: 15px; }
+.hero b { font-size: 20px; }
+.brow { display: grid; grid-template-columns: minmax(120px, 220px) 1fr 200px; gap: 10px; align-items: center;
+        font-size: 13.5px; }
+.brow .lab { overflow-wrap: anywhere; }
+.brow .val { font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; white-space: nowrap; }
+.bar { position: relative; height: 12px; background: var(--track); border-radius: 4px; }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--viz); border-radius: 0 4px 4px 0; min-width: 2px; }
+.bar .range { position: absolute; top: 2px; bottom: 2px; background: var(--viz-soft); border-radius: 4px; }
+.bar .point { position: absolute; top: -2px; width: 4px; height: 16px; margin-left: -2px; background: var(--viz); border-radius: 2px; }
+.bar.hit { cursor: default; }
+.verdict { font-size: 13px; color: var(--muted); font-style: italic; }
+.subhead { font-size: 13px; font-weight: 650; margin-top: 6px; }
+@media (max-width: 640px) { .brow { grid-template-columns: 1fr auto; } .brow .bar { grid-column: 1 / -1; } }

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job engine · Report</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/report.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Job engine</div>
+  <nav class="tabs" aria-label="Sections">
+    <a class="tab" href="/">Inbox</a>
+    <a class="tab" href="/review">Review</a>
+    <a class="tab" href="/applications">Applications</a>
+    <a class="tab active" href="/report" aria-current="page">Report</a>
+  </nav>
+  <div id="summary" class="summary"></div>
+</header>
+
+<main class="report">
+  <section aria-labelledby="h-week">
+    <h2 id="h-week" class="sec-title">Last 7 days</h2>
+    <div id="week" class="tiles"></div>
+  </section>
+
+  <section aria-labelledby="h-rates">
+    <h2 id="h-rates" class="sec-title">Response</h2>
+    <div id="rates" class="panel"></div>
+  </section>
+
+  <section aria-labelledby="h-funnel">
+    <h2 id="h-funnel" class="sec-title">Funnel</h2>
+    <div id="funnel" class="panel"></div>
+  </section>
+
+  <section id="sec-by" aria-labelledby="h-by" hidden>
+    <h2 id="h-by" class="sec-title">Breakdowns <span class="muted">· any reply, with 95% intervals</span></h2>
+    <div id="by" class="panel"></div>
+  </section>
+
+  <section aria-labelledby="h-skills">
+    <h2 id="h-skills" class="sec-title">Skills the postings asked for that no fact evidences</h2>
+    <div id="skills" class="panel"></div>
+  </section>
+
+  <section aria-labelledby="h-gate1">
+    <h2 id="h-gate1" class="sec-title">Your Gate 1 choices <span class="muted">· share of decided jobs you pursued, by role profile</span></h2>
+    <div id="gate1" class="panel"></div>
+  </section>
+
+  <section id="sec-warn" hidden>
+    <h2 class="sec-title">Warnings</h2>
+    <div id="warn" class="panel"></div>
+  </section>
+
+  <p id="rules" class="note"></p>
+  <div id="loading" class="muted center">Loading…</div>
+</main>
+</body>
+</html>
