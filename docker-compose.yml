@@ -60,6 +60,10 @@ services:
       FACTBANK_API_URL: http://factbank-api:8000
       FACTBANK_API_TOKEN: ${API_TOKEN}
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # The drafting safety net runs every 15 min; keep 14 days of executions, not forever.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "10000"
     volumes:
       - n8n_data:/home/node/.n8n
     ports:
@@ -87,6 +91,51 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # Daily backups into ./backups (gitignored): both databases, plus the files that exist
+  # nowhere else (the fact bank's private YAML, letters, job postings, application
+  # folders). Runs once at start, then every 24 h. Backups older than KEEP_DAYS are pruned;
+  # a failed dump is kept as *.failed for inspection, never silently dropped.
+  # .env is NOT included: keep a copy of it somewhere safe yourself (N8N_ENCRYPTION_KEY
+  # and the database password are needed to restore).
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+      KEEP_DAYS: "14"
+    volumes:
+      - ./backups:/backups
+      - ./:/factbank:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M)
+          for db in jobengine n8n; do
+            if pg_dump -Fc "$$db" > "/backups/$$ts-$$db.part"; then
+              mv "/backups/$$ts-$$db.part" "/backups/$$ts-$$db.dump"
+            else
+              mv "/backups/$$ts-$$db.part" "/backups/$$ts-$$db.failed"
+              echo "backup of $$db FAILED"
+            fi
+          done
+          cd /factbank
+          if tar -czf "/backups/$$ts-files.part" $$(ls -d profile.yaml entities.yaml facts.yaml vocab.yaml answers.yaml sources.yaml render_config.yaml letters jobs out/applications 2>/dev/null); then
+            mv "/backups/$$ts-files.part" "/backups/$$ts-files.tgz"
+          else
+            mv "/backups/$$ts-files.part" "/backups/$$ts-files.failed"
+          fi
+          find /backups -maxdepth 1 -type f \( -name '*.dump' -o -name '*.tgz' \) -mtime +$$KEEP_DAYS -delete
+          echo "backup $$ts done: $$(ls /backups | grep -c "^$$ts") files"
+          sleep 86400
+        done
 
 volumes:
   pg_data:

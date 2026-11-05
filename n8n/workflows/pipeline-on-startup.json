@@ -152,6 +152,28 @@
           "timeout": 30000
         }
       }
+    },
+    {
+      "id": "b1f0c6a2-0007-4a00-9000-000000000007",
+      "name": "Every 12 hours (OFF: enable if the PC stays on for days)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        400
+      ],
+      "disabled": true,
+      "notes": "Off by default: the pipeline runs on every startup (decision E). To also run while the PC stays on, open this workflow in n8n, select this node, press D (or right-click > Activate), and save. Dedupe and the 24 h per-source cap make extra runs harmless.",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      }
     }
   ],
   "connections": {
@@ -204,6 +226,17 @@
         [
           {
             "node": "Record digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 12 hours (OFF: enable if the PC stays on for days)": {
+      "main": [
+        [
+          {
+            "node": "Discover",
             "type": "main",
             "index": 0
           }

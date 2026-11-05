@@ -160,6 +160,32 @@ function Announce-Report {
     [void](Invoke-Api POST "/report/notified" @{ ids = @($r | ForEach-Object { [int64]$_.id }) })
 }
 
+# ------------------------------------------------------------------ heartbeat
+
+# Codes already announced; each issue is shown once, and once more when it clears.
+$script:Announced = @{}
+$script:Loop = 0
+
+function Check-Heartbeat {
+    $hb = Invoke-Api GET "/heartbeat"
+    $now = @{}
+    foreach ($i in @($hb.issues)) {
+        if ($i.severity -eq "info") { continue }
+        $now[$i.code] = $true
+        if (-not $script:Announced.ContainsKey($i.code)) {
+            $title = if ($i.severity -eq "critical") { "Job engine problem" } else { "Job engine warning" }
+            Show-Toast $title @($i.message) "hb-$($i.code)" $PageUrl "Open"
+            $script:Announced[$i.code] = $true
+        }
+    }
+    foreach ($code in @($script:Announced.Keys)) {
+        if (-not $now.ContainsKey($code)) {
+            Show-Toast "Job engine: resolved" @("No longer seen: $code") "hb-$code" $PageUrl "Open"
+            $script:Announced.Remove($code)
+        }
+    }
+}
+
 if ($Test) {
     Show-Toast "Job engine notifier works" @("Click to open the digest page.") "test"
     exit 0
@@ -174,6 +200,9 @@ while ($true) {
         Print-Pdfs
         Announce-FollowUps
         Announce-Report
+        # every ~5 minutes (and on the first pass): the heartbeat reads n8n's log, so not every 30 s
+        if ($Once -or ($script:Loop % 10) -eq 0) { Check-Heartbeat }
+        $script:Loop++
         if ($warned) { Show-Toast "Job engine reachable again" @("The stack is back up.") "reach" }
         $misses = 0; $warned = $false
     } catch {

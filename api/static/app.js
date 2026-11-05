@@ -63,6 +63,13 @@ async function loadSummary() {
   b.replaceChildren();
   b.hidden = true;
   b.className = "banner";
+  const hb = (s.heartbeat && s.heartbeat.issues || []).filter((i) => i.severity !== "info");
+  if (hb.length) {
+    b.className = hb.some((i) => i.severity === "critical") ? "banner bad" : "banner";
+    b.textContent = `Engine health: ${hb.map((i) => i.message).join(" · ")}`;
+    b.hidden = false;
+    return;
+  }
   if (d && d.status === "failed") {
     b.className = "banner bad";
     b.append(`The last run failed ${ago(d.created_at)} in “${d.workflow || "?"}” at “${d.failed_node || "?"}”: ${d.error || ""} `);

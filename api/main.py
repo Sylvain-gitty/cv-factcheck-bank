@@ -3,7 +3,8 @@
 n8n orchestrates; this service does the work that must be reproducible (discovery,
 scoring, tailoring, letter gates, rendering) and, from step 6, serves the review app.
 
-    GET  /health      no auth; liveness for Docker and the n8n heartbeat
+    GET  /health      no auth; liveness for Docker
+    GET  /heartbeat   the silent-failure checks (api/heartbeat.py); the desktop helper polls it
     GET  /whoami      token check
     POST /discover    Stage 1: fetch, filter, dedupe, insert new jobs (state 'new')
     POST /score       Stage 2b: BM25 score everything waiting for Gate 1 ('new' -> 'scored')
@@ -60,6 +61,7 @@ sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo r
 
 import applications as apps           # noqa: E402
 import digests                        # noqa: E402
+import heartbeat                      # noqa: E402
 import inbox                          # noqa: E402
 import report                         # noqa: E402
 import review                         # noqa: E402
@@ -312,7 +314,13 @@ def digest_page() -> str:
 
 @app.get("/ui/api/summary")
 def ui_summary() -> dict:
-    return {"digest": digests.latest(DATABASE_URL), **inbox.counts(DATABASE_URL)}
+    return {"digest": digests.latest(DATABASE_URL), **inbox.counts(DATABASE_URL),
+            "heartbeat": heartbeat.check(DATABASE_URL, FACTBANK)}
+
+
+@app.get("/heartbeat", dependencies=[Depends(require_token)])
+def get_heartbeat() -> dict:
+    return heartbeat.check(DATABASE_URL, FACTBANK)
 
 
 @app.get("/ui/api/inbox")

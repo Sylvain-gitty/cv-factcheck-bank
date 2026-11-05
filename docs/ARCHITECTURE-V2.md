@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–9 and 11 done (branch `rebuild/n8n-engine`). Step 10 (LLM) parked.**
+**Status: design confirmed 2026-11-05. Steps 1–9, 11 and 12 done (branch `rebuild/n8n-engine`). Step 10 (LLM) parked.**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -104,6 +104,17 @@ one only when the last is 7+ days old, and the desktop helper announces it. Snap
 in `report_snapshots`, so the metrics become a time series. Chart colours are validated with the
 dataviz checks: light `#1f5fae` on white, dark `#5b95e6` on `#20201d`.
 
+Reliability (step 12), see [RUNBOOK.md](RUNBOOK.md):
+- **Heartbeat** (`GET /heartbeat`, `api/heartbeat.py`): compares n8n's own execution log (read-only)
+  with what the engine recorded, so a run with no digest (the step-6 failure) or a failure nobody
+  recorded is raised as critical. Also: n8n down, no discovery for 3 days, stuck drafting or PDFs,
+  stale backups. It appears as the Inbox banner and as one notification per issue (plus one when
+  it clears), checked every ~5 min.
+- **Backups:** the `backup` service dumps both databases and tars the irreplaceable files into
+  `backups/`, at start and every 24 h, keeping 14 days. A restore was tested.
+- **n8n execution pruning:** 14 days.
+- **Optional 12-hour pipeline trigger:** present in the workflow but **off** (decision E stands).
+
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.
 
@@ -195,7 +206,7 @@ Each step: I propose → you confirm → I build → I show it working → you v
 ### Week 3: smarter + safer
 10. **LLM steps in n8n.** Re-rank top N (structured output) and an optional letter middle. Both stay challengers, and generated text never bypasses the gates
 11. **Tracking.** Report screen (Wilson intervals, censoring kept, any-reply vs interview), funnel, skill gaps, weekly snapshot + notification
-12. **Reliability.** Error workflow, daily heartbeat, Postgres backup, rate-limit / cost caps
+12. **Reliability.** Heartbeat (silent-failure checks), daily backups + tested restore, execution pruning, optional periodic run (off)
 13. **Hardening + docs.** End-to-end test on real jobs, README/ONBOARDING rewritten. Buffer for slippage
 
 ---

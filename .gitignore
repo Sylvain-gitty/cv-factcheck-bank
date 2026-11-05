@@ -42,3 +42,6 @@ _*.json
 
 # Local stack secrets (docker compose)
 .env
+
+# Local backups (databases + private files)
+backups/
