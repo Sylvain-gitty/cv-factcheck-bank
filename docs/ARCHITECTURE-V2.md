@@ -1,6 +1,12 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–3 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–4 done (branch `rebuild/n8n-engine`).**
+
+API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
+`POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
+Postgres is now the source of truth for jobs. Don't run the V1 `discover.py` / `rank.py`
+CLIs any more: they still work, but they write to the old `.state/` files, which the engine
+no longer reads.
 
 Run the stack (step 2):
 

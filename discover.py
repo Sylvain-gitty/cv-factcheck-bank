@@ -513,56 +513,20 @@ def prune_seen(seen, days=60) -> dict:
     return {k: v for k, v in seen.items() if v.get("first_seen", "") >= cutoff}
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--source", action="append", help="only these source ids")
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--list", action="store_true")
-    ap.add_argument("--reset-seen", action="store_true")
-    ap.add_argument("--url", metavar="URL",
-                    help="ingest one posting from a Lever/Greenhouse/Ashby URL")
-    ap.add_argument("--limit", type=int, default=40, help="max new jobs written per run")
-    args = ap.parse_args()
+def collect(sources, rules, seen, only=None, limit=40, baseline=None):
+    """Fetch every enabled source, filter, dedupe. No file IO: returns (new_jobs, stats).
 
-    cfg = yaml.safe_load((HERE / "sources.yaml").read_text(encoding="utf-8"))
-    rules = cfg.get("rules", {})
-    sources = list(cfg.get("sources", []))
-    for b in cfg.get("company_boards") or []:
-        if b.get("enabled", True):
-            sources.append({**b, "id": b.get("id") or f"{b['type']}-{b['token']}",
-                            "enabled": True, "defaults": b.get("defaults", {})})
-
-    if args.list:
-        log("\nFETCHED SOURCES")
-        for s in sources:
-            mark = "on " if s.get("enabled") else "off"
-            log(f"  [{mark}] {s['id']:<18} {s['type']:<9} {s['label']}")
-        log("\nEMAIL-ALERT SOURCES (n8n IMAP trigger owns these, not this script)")
-        for s in cfg.get("email_alert_sources", []):
-            log(f"        {s['id']:<18} {'email':<9} {s['label']}")
-        boards = cfg.get("company_boards") or []
-        log(f"\nCOMPANY BOARDS ({len(boards)}) — you chose these, so no aggregator noise")
-        for b in boards:
-            mark = "on " if b.get("enabled", True) else "off"
-            log(f"  [{mark}] {b['token']:<18} {b['type']:<11} {b['label']}")
-        return 0
-
-    if args.url:
-        return ingest_url(args.url, cfg.get("rules", {}))
-
-    if args.reset_seen and SEEN.exists():
-        SEEN.unlink()
-        log("dedup history cleared")
-
-    seen = prune_seen(load_seen())
-    JOBS.mkdir(exist_ok=True)
-    STATE.mkdir(exist_ok=True)
-
-    kept, stats = [], []
+    `seen` is any container of job_keys already known (exact dedupe). `baseline` is a list
+    of recent jobs ({company, title, job_id}) that new postings are near-dupe-checked
+    against, in addition to each other. stats rows: (source, fetched, filtered, dupes, error).
+    Shared by the CLI below and by factbank-api (api/discovery.py).
+    """
+    kept, stats = list(baseline or []), []
+    n_base = len(kept)
     for src in sources:
         if not src.get("enabled"):
             continue
-        if args.source and src["id"] not in args.source:
+        if only and src["id"] not in only:
             continue
         log(f"\n{src['label']}  [{src['id']}]")
         try:
@@ -609,8 +573,57 @@ def main() -> int:
             f"| {len(new_here)} new")
         stats.append((src["id"], len(raw), dropped_rules, dropped_dupe, ""))
 
+    kept = kept[n_base:]
     kept.sort(key=lambda j: str(j.get("posted_at") or ""), reverse=True)
-    kept = kept[:args.limit]
+    return kept[:limit], stats
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--source", action="append", help="only these source ids")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--reset-seen", action="store_true")
+    ap.add_argument("--url", metavar="URL",
+                    help="ingest one posting from a Lever/Greenhouse/Ashby URL")
+    ap.add_argument("--limit", type=int, default=40, help="max new jobs written per run")
+    args = ap.parse_args()
+
+    cfg = yaml.safe_load((HERE / "sources.yaml").read_text(encoding="utf-8"))
+    rules = cfg.get("rules", {})
+    sources = list(cfg.get("sources", []))
+    for b in cfg.get("company_boards") or []:
+        if b.get("enabled", True):
+            sources.append({**b, "id": b.get("id") or f"{b['type']}-{b['token']}",
+                            "enabled": True, "defaults": b.get("defaults", {})})
+
+    if args.list:
+        log("\nFETCHED SOURCES")
+        for s in sources:
+            mark = "on " if s.get("enabled") else "off"
+            log(f"  [{mark}] {s['id']:<18} {s['type']:<9} {s['label']}")
+        log("\nEMAIL-ALERT SOURCES (n8n IMAP trigger owns these, not this script)")
+        for s in cfg.get("email_alert_sources", []):
+            log(f"        {s['id']:<18} {'email':<9} {s['label']}")
+        boards = cfg.get("company_boards") or []
+        log(f"\nCOMPANY BOARDS ({len(boards)}) — you chose these, so no aggregator noise")
+        for b in boards:
+            mark = "on " if b.get("enabled", True) else "off"
+            log(f"  [{mark}] {b['token']:<18} {b['type']:<11} {b['label']}")
+        return 0
+
+    if args.url:
+        return ingest_url(args.url, cfg.get("rules", {}))
+
+    if args.reset_seen and SEEN.exists():
+        SEEN.unlink()
+        log("dedup history cleared")
+
+    seen = prune_seen(load_seen())
+    JOBS.mkdir(exist_ok=True)
+    STATE.mkdir(exist_ok=True)
+
+    kept, stats = collect(sources, rules, seen, only=args.source, limit=args.limit)
 
     log(f"\n{'=' * 66}\n{len(kept)} new job(s)")
     written = 0
