@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job engine · Review</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/review.js" defer></script>
+</head>
+<body class="wide">
+<header class="top">
+  <div class="brand">Job engine</div>
+  <nav class="tabs" aria-label="Sections">
+    <a class="tab" href="/">Inbox</a>
+    <a class="tab active" href="/review" aria-current="page">Review <span id="tab-review-n" class="pill"></span></a>
+    <span class="tab soon" title="Step 9">Applications</span>
+  </nav>
+  <div id="summary" class="summary" aria-live="polite"></div>
+</header>
+
+<div class="review-grid">
+  <aside class="queue" aria-label="Jobs to review">
+    <div class="queue-head">
+      <input id="queue-q" type="search" placeholder="Filter" autocomplete="off">
+    </div>
+    <ol id="queue" class="queue-list"></ol>
+    <div id="queue-empty" class="muted center" hidden>Nothing to review. Pursue a job in the Inbox.</div>
+  </aside>
+
+  <section id="pane" class="pane" hidden>
+    <div class="pane-head">
+      <div class="pane-title">
+        <div id="r-title" class="title"></div>
+        <div id="r-meta" class="meta"></div>
+      </div>
+      <div class="pane-actions">
+        <button id="r-reopen" class="btn" hidden>Reopen</button>
+        <button id="r-drop" class="btn danger-outline">Drop job</button>
+      </div>
+    </div>
+    <div id="r-banner" class="banner" hidden></div>
+
+    <div class="split">
+      <div class="col">
+        <div class="col-head">
+          <b>CV</b>
+          <select id="r-variant" aria-label="CV variant"></select>
+          <button id="r-rebuild" class="btn small" disabled>Rebuild CV</button>
+          <span id="r-cv-status" class="muted"></span>
+          <a id="r-cv-open" class="small-label" href="#" target="_blank" rel="noopener">Open in new tab</a>
+        </div>
+        <ul id="r-cv-checks" class="checks compact"></ul>
+        <iframe id="r-cv" class="cvframe" title="Tailored CV" sandbox></iframe>
+      </div>
+
+      <div class="col">
+        <div class="col-head">
+          <b>Letter</b>
+          <span id="r-save" class="muted"></span>
+          <span class="spacer"></span>
+          <label class="muted small-label"><input id="r-preview-toggle" type="checkbox"> Preview</label>
+        </div>
+
+        <div id="r-opening" class="opening" hidden>
+          <label for="r-opening-text"><b>Your opening</b> <span class="muted">(two or three sentences only you could write about this company)</span></label>
+          <textarea id="r-opening-text" rows="4" placeholder="What did you notice about them, and why did it make you look twice?"></textarea>
+          <div id="r-hooks" class="hooks"></div>
+          <button id="r-insert" class="btn" disabled>Put it in the letter</button>
+        </div>
+
+        <textarea id="r-text" class="editor" spellcheck="true" aria-label="Letter source"></textarea>
+        <div id="r-prose" class="prose" hidden></div>
+        <ul id="r-checks" class="checks"></ul>
+        <details id="r-evidence-box" class="evidence"><summary>Evidence available for this posting</summary><ul id="r-evidence"></ul></details>
+
+        <div class="approve-bar">
+          <label><input id="r-cvread" type="checkbox"> I read the CV, and it leads with the right things for this job</label>
+          <button id="r-approve" class="btn pursue" disabled>Approve</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pane-empty" class="pane muted center">Pick a job on the left.</section>
+</div>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span id="toast-msg"></span>
+  <button id="toast-undo" class="btn small" hidden>Undo</button>
+</div>
+
+<dialog id="confirm">
+  <p id="confirm-msg"></p>
+  <div class="dialog-actions">
+    <button id="confirm-no" class="btn">Cancel</button>
+    <button id="confirm-yes" class="btn danger">Drop it</button>
+  </div>
+</dialog>
+</body>
+</html>

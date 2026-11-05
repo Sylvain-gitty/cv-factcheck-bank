@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–7 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–8 done (branch `rebuild/n8n-engine`).**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -54,6 +54,20 @@ Each attempt is a `documents` version with its check results. A failed draft ret
 `pursued` with `draft_error`. It gets at most one attempt per run and 3 in total, and the failure
 reaches you as a failed digest (Windows notification). The webhook takes no input and
 only means "there may be work", so a stray call is harmless.
+
+Review (step 8): http://localhost:8000/review. A queue of jobs to review, waiting, drafting
+and approved, then for the selected job:
+- **CV:** the tailored CV with its checks, and a variant switch with Rebuild.
+- **Letter:** an "Your opening" box that replaces the TODO block, the letter source editor
+  (autosave), a reader-view preview, live checks, and the hooks and evidence from the posting.
+- **Approve** needs every fatal letter check to pass, the CV's fatal checks to pass, and the
+  **"I read the CV"** tick (Gate 2, which V1 never enforced). It sets `APPROVED: yes`, renders
+  with V1's `letter.py --render`, and moves the job to `approved`. Reopen and Drop are also there.
+- **The letter file stays the source of truth:** each save keeps the previous version in
+  `letters/.history/<slug>/`, and a save based on a stale copy is refused (409).
+- **genericness change:** the gate now compares against letters whose opening is written,
+  not against other unwritten drafts (those share a template and scored 1.00, so the gate
+  could never pass).
 
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.

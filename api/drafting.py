@@ -53,13 +53,14 @@ def _next_version(conn, job_id: int, kind: str) -> int:
                         "where job_id=%s and kind=%s", (job_id, kind)).fetchone()["v"]
 
 
-def draft_one(root: Path, slug: str, score: dict) -> dict:
-    """Build CV + letter draft for one job. Returns what was produced; raises on failure."""
+def draft_one(root: Path, slug: str, score: dict, variant: str | None = None) -> dict:
+    """Build CV + letter draft for one job. Returns what was produced; raises on failure.
+    `variant` overrides the score-based choice (the review app's variant switch)."""
     job_path = root / "jobs" / f"{slug}.yaml"
     if not job_path.exists():
         raise RuntimeError(f"no job file jobs/{slug}.yaml")
     job = yaml.safe_load(job_path.read_text(encoding="utf-8")) or {}
-    variant = T.variant_for(slug, {slug: score or {}})
+    variant = variant or T.variant_for(slug, {slug: score or {}})
 
     _run(root, ["tailor.py", f"jobs/{slug}.yaml", "--variant", variant])
     cv_dir = T.dest_for(job)

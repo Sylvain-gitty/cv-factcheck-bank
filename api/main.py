@@ -55,6 +55,7 @@ sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo r
 
 import digests                        # noqa: E402
 import inbox                          # noqa: E402
+import review                         # noqa: E402
 from discovery import run_discovery    # noqa: E402
 from drafting import run_drafting      # noqa: E402
 from migrate import migrate            # noqa: E402
@@ -252,7 +253,7 @@ ALLOWED_HOSTS = {f"localhost:{APP_PORT}", f"127.0.0.1:{APP_PORT}"}
 ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
 # Exact paths and "/"-terminated prefixes only. A bare startswith("/digest") also matched
 # the bearer API's /digests, and refused every digest n8n tried to record (step 6 bug).
-UI_EXACT = {"/", "/digest"}
+UI_EXACT = {"/", "/review", "/digest"}
 UI_PREFIXES = ("/ui/", "/static/")
 
 
@@ -273,12 +274,13 @@ async def browser_guard(request: Request, call_next):
                 return JSONResponse({"detail": "cross-origin write refused"}, status_code=403)
     response = await call_next(request)
     if is_ui_path(path):
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
+        # setdefault: a route may set its own (the CV preview needs inline styles + framing)
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Content-Security-Policy", (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
-            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"))
     return response
 
 
@@ -290,7 +292,7 @@ def home():
 
 @app.get("/static/{name}", include_in_schema=False)
 def static(name: str):
-    if name not in {"app.js", "app.css"}:
+    if name not in {"app.js", "app.css", "review.js"}:
         raise HTTPException(status_code=404)
     return FileResponse(STATIC / name, headers={"Cache-Control": "no-store"})
 
@@ -358,3 +360,111 @@ class UndoIn(BaseModel):
 @app.post("/ui/api/decisions/undo")
 def ui_undo(body: UndoIn) -> dict:
     return inbox.undo(DATABASE_URL, body.decision_ids)
+
+
+
+# --------------------------------------------------------------------------- review (Gates 2+3)
+
+@app.get("/review", include_in_schema=False)
+def review_page():
+    return FileResponse(STATIC / "review.html", headers={"Cache-Control": "no-store"})
+
+
+def _review_call(fn, *args):
+    try:
+        return fn(*args)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="no such job") from e
+    except review.Conflict as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except review.Refused as e:
+        return JSONResponse({"detail": str(e), "checks": e.checks}, status_code=400)
+
+
+@app.get("/ui/api/review")
+def ui_review_list() -> dict:
+    return {"jobs": review.list_review(DATABASE_URL, FACTBANK)}
+
+
+@app.get("/ui/api/review/{job_id}")
+def ui_review_load(job_id: int):
+    return _review_call(review.load, DATABASE_URL, FACTBANK, job_id)
+
+
+class LetterIn(BaseModel):
+    text: str = Field(..., max_length=60_000)
+    base_hash: str = Field(..., pattern=r"^[0-9a-f]{16}$")
+
+
+class CheckIn(BaseModel):
+    text: str = Field(..., max_length=60_000)
+
+
+class ApproveIn(LetterIn):
+    cv_read: bool = False
+
+
+class VariantIn(BaseModel):
+    variant: str = Field(..., pattern=r"^[a-z0-9-]{1,20}$")
+
+
+def _slug_of(job_id: int) -> str:
+    with psycopg.connect(DATABASE_URL) as conn:
+        r = conn.execute("select slug from jobs where id=%s", (job_id,)).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="no such job")
+    return r[0]
+
+
+@app.post("/ui/api/review/{job_id}/check")
+def ui_review_check(job_id: int, body: CheckIn):
+    return review.check(FACTBANK, _slug_of(job_id), body.text)
+
+
+@app.post("/ui/api/review/{job_id}/letter")
+def ui_review_save(job_id: int, body: LetterIn):
+    return _review_call(review.save, DATABASE_URL, FACTBANK, job_id, body.text, body.base_hash)
+
+
+@app.post("/ui/api/review/{job_id}/approve")
+def ui_review_approve(job_id: int, body: ApproveIn):
+    return _review_call(review.approve, DATABASE_URL, FACTBANK, job_id, body.text,
+                        body.base_hash, body.cv_read)
+
+
+@app.post("/ui/api/review/{job_id}/reopen")
+def ui_review_reopen(job_id: int):
+    return _review_call(review.reopen, DATABASE_URL, FACTBANK, job_id)
+
+
+@app.post("/ui/api/review/{job_id}/drop")
+def ui_review_drop(job_id: int):
+    return _review_call(review.drop, DATABASE_URL, job_id)
+
+
+@app.post("/ui/api/review/{job_id}/retry")
+def ui_review_retry(job_id: int):
+    res = _review_call(review.retry, DATABASE_URL, job_id)
+    if isinstance(res, dict):
+        _ping_drafting()
+    return res
+
+
+@app.post("/ui/api/review/{job_id}/cv")
+def ui_review_cv(job_id: int, body: VariantIn):
+    return _review_call(review.rebuild_cv, DATABASE_URL, FACTBANK, job_id, body.variant)
+
+
+@app.get("/ui/files/cv/{job_id}", include_in_schema=False)
+def ui_cv_file(job_id: int):
+    """The tailored CV, for the preview frame. Only a path the database recorded, inside out/.
+    V1's CV is self-contained HTML with inline styles: no scripts allowed, framable by the app only."""
+    p = review.cv_html_path(DATABASE_URL, FACTBANK, job_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="no CV for this job")
+    return FileResponse(p, media_type="text/html", headers={
+        "Cache-Control": "no-store",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                                   "font-src data:; frame-ancestors 'self'; base-uri 'none'",
+    })

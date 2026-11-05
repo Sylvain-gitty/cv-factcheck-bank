@@ -485,8 +485,13 @@ def run_checks(slug, text, job, bank):
     dead = next((d for d in DEAD_OPENERS if d in prose[:220].lower()), None)
     add("no_dead_openers", not dead, "clean" if not dead else f"opens with '{dead}'")
 
-    prev = [(p.stem, prose_of(p.read_text(encoding="utf-8")))
-            for p in letter_files(exclude=slug)]
+    # Compare against letters you have WRITTEN, not against other unwritten drafts. Drafts
+    # share the template and often the same two proof points, so against each other they
+    # score 1.00 and the gate failed every draft in the queue whatever you wrote -- a gate
+    # that cannot pass teaches you to ignore it. The question this check asks is "is this
+    # indistinguishable from a letter I already sent?", and only written letters answer it.
+    prev = [(p.stem, prose_of(t)) for p in letter_files(exclude=slug)
+            if "OPENING: WRITE THIS YOURSELF" not in (t := p.read_text(encoding="utf-8"))]
     worst = max(((cosine(prose, t), s) for s, t in prev), default=(0.0, None))
     add("genericness", worst[0] < 0.75,
         f"most similar previous letter: {worst[1] or 'none yet'} at {worst[0]:.2f}"
