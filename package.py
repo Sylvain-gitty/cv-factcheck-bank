@@ -185,7 +185,9 @@ def follow_up_ics(slug, job) -> str:
 
 # --------------------------------------------------------------------------- commands
 
-def assemble(slug) -> int:
+def assemble(slug, record: bool = True) -> int:
+    """Build out/applications/<slug>/. `record=False` skips applications.csv: the V2
+    engine keeps applications in Postgres and calls this from factbank-api."""
     bank = R.load_bank()
     checks, job = readiness(slug, bank)
     log(f"\nREADINESS — {slug}")
@@ -217,8 +219,8 @@ def assemble(slug) -> int:
     (dest / "CHECKLIST.md").write_text(checklist(slug, job, bank, answers), encoding="utf-8")
     (dest / "follow-up.ics").write_text(follow_up_ics(slug, job), encoding="utf-8")
 
-    rows = TR.read_rows()
-    if not any(r["slug"] == slug for r in rows):
+    rows = TR.read_rows() if record else []
+    if record and not any(r["slug"] == slug for r in rows):
         scores = {}
         sp = HERE / ".state" / "scores.json"
         if sp.exists():

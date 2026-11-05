@@ -72,7 +72,7 @@ function renderQueue() {
   let lastState = null;
   for (const j of shown) {
     if (j.state !== lastState) {
-      list.append(el("li", { class: "qsection", text: { ready_for_review: "To review", pursued: "Waiting for drafting", drafting: "Drafting", approved: "Approved (step 9 packages these)" }[j.state] }));
+      list.append(el("li", { class: "qsection", text: { ready_for_review: "To review", pursued: "Waiting for drafting", drafting: "Drafting", approved: "Approved (packaging…)" }[j.state] }));
       lastState = j.state;
     }
     const bits = [j.relative != null ? `score ${j.relative}` : null, j.cv_variant ? `CV ${j.cv_variant}` : null,
@@ -124,7 +124,7 @@ function render() {
     setTimeout(() => { if (S.current === j.id) { loadQueue(); select(j.id); } }, 4000);
   } else if (j.state === "approved") {
     b.className = "banner";
-    b.textContent = "Approved. The letter is rendered; step 9 assembles the application folder. Reopen to edit it again.";
+    b.textContent = "Approved and rendered. Find the package under Applications. Reopen to edit it again.";
     b.hidden = false;
   }
 
@@ -248,8 +248,9 @@ function insertOpening() {
 async function approve() {
   if (!(await flush())) return;
   try {
-    await api(`/ui/api/review/${S.data.job.id}/approve`, { text: $("r-text").value, base_hash: S.hash, cv_read: $("r-cvread").checked });
-    toast("Approved: letter rendered. It moves to Applications in step 9.");
+    const r = await api(`/ui/api/review/${S.data.job.id}/approve`, { text: $("r-text").value, base_hash: S.hash, cv_read: $("r-cvread").checked });
+    toast(r.package_error ? `Approved, but packaging failed: ${r.package_error}. Retry it under Applications.`
+                          : "Approved and packaged. It is waiting under Applications.", 7000);
     await loadQueue();
     const next = S.jobs.find((j) => j.state === "ready_for_review");
     await select(next ? next.id : S.data.job.id);

@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–8 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–9 done (branch `rebuild/n8n-engine`).**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -68,6 +68,21 @@ and approved, then for the selected job:
 - **genericness change:** the gate now compares against letters whose opening is written,
   not against other unwritten drafts (those share a template and scored 1.00, so the gate
   could never pass).
+
+Applications (step 9): http://localhost:8000/applications.
+- **Approve packages automatically,** with V1's `package.assemble(record=False)`: CV, letter,
+  `CHECKLIST.md` with your screening answers, and `follow-up.ics`, in `out/applications/<slug>/`.
+- **PDFs are printed on Windows** by the desktop helper (`notifier.ps1`, now every 30 s) with Edge,
+  the same path V1 used. The container has no browser and none of the CV's fonts, so its page
+  breaks would differ from what you checked. Paths from the API are only accepted inside `out\`.
+- **There is still no submit.** You apply on the employer's site, then click **I sent it**
+  (with a date; it can be undone). That schedules day-7 and day-14 follow-ups, which the helper
+  announces as Windows notifications and the screen lists with Done and Snooze (3 days).
+- **Outcome buttons:** Replied, Interview, Offer, Rejected, "No reply, close it", "I withdrew". A
+  reply sets `first_reply_date` once and closes the open follow-ups. No-reply and withdrawn are
+  recorded, but never counted as replies.
+- V1 applications sent in September have no follow-ups scheduled, so they don't fire
+  retroactively.
 
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.
@@ -155,7 +170,7 @@ Each step: I propose → you confirm → I build → I show it working → you v
 6. **Review app: Inbox.** Job cards, Pursue/Skip → API stores the decision (step 7 hands pursues to n8n)
 7. **Drafting workflow.** On pursue (webhook ping, within seconds): tailor → letter draft → `ready_for_review`
 8. **Review app: Review screen.** CV + letter editor + live gates + Approve
-9. **Package + send.** On approve: package. *I sent it* button, then follow-up reminders. ✅ *Milestone: discovery to sent, all clicks*
+9. **Package + send.** On approve: package (PDFs printed on Windows). *I sent it* → day-7/14 follow-ups as notifications; outcome buttons. ✅ *Milestone: discovery to sent, all clicks*
 
 ### Week 3: smarter + safer
 10. **LLM steps in n8n.** Re-rank top N (structured output) and an optional letter middle. Both stay challengers, and generated text never bypasses the gates

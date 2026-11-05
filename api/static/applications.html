@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job engine · Applications</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/applications.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Job engine</div>
+  <nav class="tabs" aria-label="Sections">
+    <a class="tab" href="/">Inbox</a>
+    <a class="tab" href="/review">Review</a>
+    <a class="tab active" href="/applications" aria-current="page">Applications <span id="tab-apps-n" class="pill"></span></a>
+  </nav>
+  <div id="summary" class="summary" aria-live="polite"></div>
+</header>
+
+<main class="apps">
+  <section id="sec-due" hidden>
+    <h2 class="sec-title">Follow-ups due</h2>
+    <ol id="due" class="list"></ol>
+  </section>
+  <section id="sec-approved" hidden>
+    <h2 class="sec-title">Approved, not packaged yet</h2>
+    <ol id="approved" class="list"></ol>
+  </section>
+  <section id="sec-ready" hidden>
+    <h2 class="sec-title">Ready to send <span class="muted">· you submit on the employer's site, then tell the engine</span></h2>
+    <ol id="ready" class="list"></ol>
+  </section>
+  <section id="sec-sent" hidden>
+    <h2 class="sec-title">Sent, waiting for a reply</h2>
+    <ol id="sent" class="list"></ol>
+  </section>
+  <section id="sec-done" hidden>
+    <details>
+      <summary class="sec-title">Outcomes recorded <span id="done-n" class="muted"></span></summary>
+      <ol id="done" class="list"></ol>
+    </details>
+  </section>
+  <div id="empty" class="empty" hidden>
+    <div class="empty-title">No applications yet</div>
+    <div class="muted">Approve a letter in Review and its application appears here, packaged.</div>
+  </div>
+  <div id="loading" class="muted center">Loading…</div>
+</main>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span id="toast-msg"></span>
+  <button id="toast-undo" class="btn small" hidden>Undo</button>
+</div>
+</body>
+</html>

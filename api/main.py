@@ -8,6 +8,8 @@ scoring, tailoring, letter gates, rendering) and, from step 6, serves the review
     POST /discover    Stage 1: fetch, filter, dedupe, insert new jobs (state 'new')
     POST /score       Stage 2b: BM25 score everything waiting for Gate 1 ('new' -> 'scored')
     POST /draft       Stages 3+4: CV + letter draft for pursued jobs ('pursued' -> 'ready_for_review')
+    GET  /pdf/pending · POST /pdf/{id}/done        the Windows notifier prints PDFs with Edge
+    GET  /reminders/due · POST /reminders/shown    the Windows notifier announces follow-ups
     GET  /validate    fact-bank integrity (validate.py)
     POST /digests     n8n records the result of a pipeline run (ok or failed)
     GET  /digests/latest · GET /digests/pending · POST /digests/notified
@@ -41,6 +43,7 @@ import sys
 import threading
 import urllib.request
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 from typing import Literal
@@ -53,6 +56,7 @@ from pydantic import BaseModel, Field
 FACTBANK = Path(os.environ.get("FACTBANK_DIR", Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo root
 
+import applications as apps           # noqa: E402
 import digests                        # noqa: E402
 import inbox                          # noqa: E402
 import review                         # noqa: E402
@@ -253,7 +257,7 @@ ALLOWED_HOSTS = {f"localhost:{APP_PORT}", f"127.0.0.1:{APP_PORT}"}
 ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
 # Exact paths and "/"-terminated prefixes only. A bare startswith("/digest") also matched
 # the bearer API's /digests, and refused every digest n8n tried to record (step 6 bug).
-UI_EXACT = {"/", "/review", "/digest"}
+UI_EXACT = {"/", "/review", "/applications", "/digest"}
 UI_PREFIXES = ("/ui/", "/static/")
 
 
@@ -292,7 +296,7 @@ def home():
 
 @app.get("/static/{name}", include_in_schema=False)
 def static(name: str):
-    if name not in {"app.js", "app.css", "review.js"}:
+    if name not in {"app.js", "app.css", "review.js", "applications.js"}:
         raise HTTPException(status_code=404)
     return FileResponse(STATIC / name, headers={"Cache-Control": "no-store"})
 
@@ -428,8 +432,16 @@ def ui_review_save(job_id: int, body: LetterIn):
 
 @app.post("/ui/api/review/{job_id}/approve")
 def ui_review_approve(job_id: int, body: ApproveIn):
-    return _review_call(review.approve, DATABASE_URL, FACTBANK, job_id, body.text,
-                        body.base_hash, body.cv_read)
+    res = _review_call(review.approve, DATABASE_URL, FACTBANK, job_id, body.text,
+                       body.base_hash, body.cv_read)
+    if isinstance(res, dict):
+        # Stage 5 follows approval directly. A packaging failure does not undo the
+        # approval: the job stays 'approved' and the Applications screen offers a retry.
+        try:
+            res["package"] = apps.package(DATABASE_URL, FACTBANK, job_id)
+        except apps.Refused as e:
+            res["package_error"] = str(e)
+    return res
 
 
 @app.post("/ui/api/review/{job_id}/reopen")
@@ -468,3 +480,122 @@ def ui_cv_file(job_id: int):
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
                                    "font-src data:; frame-ancestors 'self'; base-uri 'none'",
     })
+
+
+
+# --------------------------------------------------------------------------- applications (Stage 5, Gate 4)
+
+def _apps_call(fn, *args):
+    try:
+        return fn(*args)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="no such job") from e
+    except apps.Refused as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.get("/applications", include_in_schema=False)
+def applications_page():
+    return FileResponse(STATIC / "applications.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/ui/api/applications")
+def ui_apps_list() -> dict:
+    return apps.list_applications(DATABASE_URL, FACTBANK)
+
+
+@app.get("/ui/api/applications/{job_id}/checklist")
+def ui_apps_checklist(job_id: int) -> dict:
+    return {"text": apps.checklist(FACTBANK, _slug_of(job_id))}
+
+
+@app.post("/ui/api/applications/{job_id}/package")
+def ui_apps_package(job_id: int):
+    return _apps_call(apps.package, DATABASE_URL, FACTBANK, job_id)
+
+
+class SentIn(BaseModel):
+    sent_date: date | None = None
+
+
+@app.post("/ui/api/applications/{job_id}/sent")
+def ui_apps_sent(job_id: int, body: SentIn | None = None):
+    return _apps_call(apps.mark_sent, DATABASE_URL, job_id, (body or SentIn()).sent_date)
+
+
+@app.post("/ui/api/applications/{job_id}/unsend")
+def ui_apps_unsend(job_id: int):
+    return _apps_call(apps.unsend, DATABASE_URL, job_id)
+
+
+class OutcomeIn(BaseModel):
+    outcome: Literal["replied", "interview", "offer", "rejected", "closed", "withdrawn"]
+    outcome_date: date | None = None
+    notes: str | None = Field(None, max_length=2000)
+
+
+@app.post("/ui/api/applications/{job_id}/outcome")
+def ui_apps_outcome(job_id: int, body: OutcomeIn):
+    return _apps_call(apps.record_outcome, DATABASE_URL, job_id, body.outcome, body.outcome_date, body.notes)
+
+
+class FollowUpIn(BaseModel):
+    action: Literal["done", "snooze"]
+
+
+@app.post("/ui/api/follow-ups/{follow_up_id}")
+def ui_follow_up(follow_up_id: int, body: FollowUpIn):
+    return _apps_call(apps.close_follow_up, DATABASE_URL, follow_up_id, body.action)
+
+
+@app.get("/ui/files/package/{job_id}/{name}", include_in_schema=False)
+def ui_package_file(job_id: int, name: str):
+    """A file from this job's application folder, by exact name (html/pdf/md/ics)."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", name):
+        raise HTTPException(status_code=400, detail="bad file name")
+    try:
+        p = apps.file_path(DATABASE_URL, FACTBANK, job_id, name)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail="no such job") from e
+    if p is None:
+        raise HTTPException(status_code=404, detail="no such file")
+    media = {".html": "text/html", ".pdf": "application/pdf", ".md": "text/plain; charset=utf-8",
+             ".ics": "text/calendar"}[p.suffix]
+    headers = {"Cache-Control": "no-store",
+               "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                                          "font-src data:; frame-ancestors 'self'; base-uri 'none'",
+               "X-Frame-Options": "SAMEORIGIN"}
+    if p.suffix == ".ics":
+        headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
+    return FileResponse(p, media_type=media, headers=headers)
+
+
+# host-side helpers (bearer token): PDFs and follow-up announcements
+
+@app.get("/pdf/pending", dependencies=[Depends(require_token)])
+def pdf_pending() -> dict:
+    return {"jobs": apps.pdf_pending(DATABASE_URL)}
+
+
+class PdfDoneIn(BaseModel):
+    ok: bool
+    error: str | None = Field(None, max_length=500)
+
+
+@app.post("/pdf/{pdf_id}/done", dependencies=[Depends(require_token)])
+def pdf_done(pdf_id: int, body: PdfDoneIn) -> dict:
+    return apps.pdf_done(DATABASE_URL, pdf_id, body.ok, body.error)
+
+
+@app.get("/reminders/due", dependencies=[Depends(require_token)])
+def reminders_due() -> dict:
+    return {"reminders": apps.reminders_due(DATABASE_URL)}
+
+
+class ShownIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=200)
+
+
+@app.post("/reminders/shown", dependencies=[Depends(require_token)])
+def reminders_shown(body: ShownIn) -> dict:
+    return {"marked": apps.reminders_shown(DATABASE_URL, body.ids)}
