@@ -39,3 +39,6 @@ __pycache__/
 # throwaway analysis scripts (use the scratchpad instead)
 _*.py
 _*.json
+
+# Local stack secrets (docker compose)
+.env

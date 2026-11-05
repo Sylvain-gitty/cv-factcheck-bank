@@ -1,0 +1,3 @@
+# Only the dependency list belongs in the image.
+*
+!requirements.txt

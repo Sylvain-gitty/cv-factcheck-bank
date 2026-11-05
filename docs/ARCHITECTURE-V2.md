@@ -1,6 +1,13 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Step 1 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–2 done (branch `rebuild/n8n-engine`).**
+
+Run the stack (step 2):
+
+```bash
+python scripts/init_env.py        # once: .env with fresh secrets (gitignored)
+docker compose up -d --build      # n8n :5678 · factbank-api :8000 · Postgres :5433, all 127.0.0.1
+```
 
 ## Goal
 

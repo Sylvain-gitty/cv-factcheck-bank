@@ -1,0 +1,90 @@
+# Job engine stack: n8n (the engine), Postgres (all state), factbank-api (the Python logic
+# + later the review app). See docs/ARCHITECTURE-V2.md.
+#
+#   python scripts/init_env.py      # once: writes .env with fresh secrets
+#   docker compose up -d --build
+#
+# Every port is bound to 127.0.0.1: nothing here is reachable from your network.
+# Personal data is never copied into an image. The repo is bind-mounted into the API
+# container at runtime, so the fact bank stays on your disk and edits apply on restart.
+
+name: job-engine
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: jobengine            # the engine's own data; n8n gets a second db
+      TZ: ${TZ}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro   # runs only on first start (empty volume)
+    ports:
+      - "127.0.0.1:5433:5432"           # for psql / a DB client on the host; 5433 avoids clashes
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d jobengine"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.46.6
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      GENERIC_TIMEZONE: ${TZ}
+      TZ: ${TZ}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # Workflows reach the API by its service name; the token lives in n8n's env so no
+      # secret is ever stored in workflow JSON.
+      FACTBANK_API_URL: http://factbank-api:8000
+      FACTBANK_API_TOKEN: ${API_TOKEN}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+
+  factbank-api:
+    build: ./api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/jobengine
+      API_TOKEN: ${API_TOKEN}
+      N8N_WEBHOOK_BASE: http://n8n:5678/webhook
+      FACTBANK_DIR: /factbank
+      TZ: ${TZ}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./:/factbank                    # code + fact bank, read-write (jobs/, out/, letters/)
+    ports:
+      - "127.0.0.1:8000:8000"           # API now, review app from step 6
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pg_data:
+  n8n_data:
