@@ -8,6 +8,13 @@ scoring, tailoring, letter gates, rendering) and, from step 6, serves the review
     POST /discover    Stage 1: fetch, filter, dedupe, insert new jobs (state 'new')
     POST /score       Stage 2b: BM25 score everything waiting for Gate 1 ('new' -> 'scored')
     GET  /validate    fact-bank integrity (validate.py)
+    POST /digests     n8n records the result of a pipeline run (ok or failed)
+    GET  /digests/latest · GET /digests/pending · POST /digests/notified
+    GET  /            the latest digest as a page (read-only, no token; see below)
+
+The page at / is the one unauthenticated route besides /health. It is read-only (job
+titles, counts, run status) and the port is bound to 127.0.0.1. How the review app
+authenticates its write actions is decided in step 6.
 
 Security, carried over from bridge.py:
 - The container port is published on 127.0.0.1 only (docker-compose.yml).
@@ -27,12 +34,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import psycopg
+from typing import Literal
+
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 FACTBANK = Path(os.environ.get("FACTBANK_DIR", Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo root
 
+import digests                        # noqa: E402
 from discovery import run_discovery    # noqa: E402
 from migrate import migrate            # noqa: E402
 from scoring import run_scoring        # noqa: E402
@@ -137,3 +148,71 @@ def validate() -> dict:
         "warnings": [ln.strip()[2:] for ln in lines if ln.startswith("  ! ")],
         "summary": next((ln for ln in reversed(lines) if ln.strip()), ""),
     }
+
+
+# --------------------------------------------------------------------------- digests
+
+class TopJob(BaseModel):
+    id: int | None = None
+    slug: str | None = Field(None, max_length=200)
+    title: str | None = Field(None, max_length=500)
+    company: str | None = Field(None, max_length=300)
+    url: str | None = Field(None, max_length=2000)
+    relative: int | None = None
+    archetype: str | None = Field(None, max_length=100)
+
+
+class DigestIn(BaseModel):
+    status: Literal["ok", "failed"]
+    trigger: str | None = Field(None, max_length=40)
+    new_count: int = Field(0, ge=0)
+    inbox_size: int | None = Field(None, ge=0)
+    fetched: int | None = Field(None, ge=0)
+    sources_run: int | None = Field(None, ge=0)
+    sources_failed: list[str] = Field(default_factory=list, max_length=200)
+    top: list[TopJob] = Field(default_factory=list, max_length=50)
+    discover_run_id: int | None = None
+    score_run_id: int | None = None
+    workflow: str | None = Field(None, max_length=300)
+    failed_node: str | None = Field(None, max_length=300)
+    error: str | None = Field(None, max_length=5000)
+    execution_url: str | None = Field(None, max_length=2000)
+    source_execution: str | None = Field(None, max_length=100,
+                                         description="idempotency key: the n8n execution reported")
+
+
+@app.post("/digests", dependencies=[Depends(require_token)])
+def post_digest(body: DigestIn) -> dict:
+    """Returns only {id, status, duplicate} -- deliberately NOT the stored row.
+
+    n8n treats any output item with a top-level `error` field as a failed item and retries
+    the node. Echoing a failed digest (which has `error: "..."`) made every alert retry
+    three times, 5 s apart, although each POST had already succeeded.
+    """
+    row = digests.record(DATABASE_URL, body.model_dump())
+    return {"id": row["id"], "status": row["status"], "duplicate": bool(row.get("duplicate"))}
+
+
+@app.get("/digests/latest", dependencies=[Depends(require_token)])
+def get_latest() -> dict:
+    return {"digest": digests.latest(DATABASE_URL)}
+
+
+@app.get("/digests/pending", dependencies=[Depends(require_token)])
+def get_pending() -> dict:
+    return {"digests": digests.pending(DATABASE_URL)}
+
+
+class NotifiedIn(BaseModel):
+    up_to_id: int = Field(..., ge=1)
+
+
+@app.post("/digests/notified", dependencies=[Depends(require_token)])
+def post_notified(body: NotifiedIn) -> dict:
+    return {"marked": digests.mark_notified(DATABASE_URL, body.up_to_id)}
+
+
+@app.get("/", response_class=HTMLResponse)
+def home() -> str:
+    """The digest page the desktop notification opens. Read-only."""
+    return digests.page(digests.latest(DATABASE_URL))

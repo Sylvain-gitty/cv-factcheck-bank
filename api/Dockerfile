@@ -10,4 +10,7 @@ RUN pip install -r /tmp/requirements.txt && useradd --create-home app
 USER app
 WORKDIR /factbank
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--app-dir", "/factbank/api", "--host", "0.0.0.0", "--port", "8000"]
+# Keep-alive longer than Node's HTTP agent reuses sockets: with uvicorn's 5 s default, n8n
+# sometimes reused a socket the server had just closed ("socket hang up") and retried a
+# request that had already succeeded.
+CMD ["uvicorn", "main:app", "--app-dir", "/factbank/api", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "120"]

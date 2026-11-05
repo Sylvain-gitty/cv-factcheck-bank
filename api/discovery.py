@@ -80,8 +80,29 @@ def run_discovery(dsn: str, root: Path, limit: int, only: list[str] | None) -> d
                 "select company, title, coalesce(job_key, slug) from jobs "
                 "where first_seen > now() - make_interval(days => %s)", (NEAR_DUP_DAYS,))]
 
-            kept, stats = discover.collect(sources, cfg.get("rules", {}), seen,
-                                           only=only, limit=limit, baseline=baseline)
+            rules = cfg.get("rules", {})
+            kept, stats = discover.collect(sources, rules, seen, only=only,
+                                           limit=10_000, baseline=baseline)
+
+            # PER-SOURCE CAP PER 24 HOURS, NOT PER RUN. discover.collect caps each source
+            # per call (max_per_source, 8). That was "8 a day" when V1 ran once a day; with
+            # the pipeline running on every startup it became "8 per restart", and OpenAI's
+            # board alone added 8 on each of seven test restarts. The quota now counts what
+            # each source already added in the last 24 h. Postings over quota are not
+            # recorded anywhere, so they come back on a later day rather than being lost.
+            cap = rules.get("max_per_source", 8)
+            used = dict(conn.execute(
+                "select source, count(*) from jobs where first_seen > now() - interval '24 hours' "
+                "group by source").fetchall())
+            over_quota: dict[str, int] = {}
+            capped = []
+            for job in kept:
+                if used.get(job["source"], 0) >= cap:
+                    over_quota[job["source"]] = over_quota.get(job["source"], 0) + 1
+                    continue
+                used[job["source"]] = used.get(job["source"], 0) + 1
+                capped.append(job)
+            kept = capped[:limit]
 
             new_jobs = []
             now = datetime.now(timezone.utc)
@@ -129,6 +150,7 @@ def run_discovery(dsn: str, root: Path, limit: int, only: list[str] | None) -> d
                            "error": e or None} for s, f, r, d, e in stats]
             failed = [p["source"] for p in per_source if p["error"]]
             result = {"run_id": run_id, "new": len(new_jobs), "new_jobs": new_jobs,
+                      "over_daily_quota": over_quota,
                       "sources_run": len(per_source), "sources_failed": failed,
                       "fetched": sum(p["fetched"] for p in per_source),
                       "per_source": per_source}

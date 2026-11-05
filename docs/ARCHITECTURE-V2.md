@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–4 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–5 done (branch `rebuild/n8n-engine`).**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -16,6 +16,23 @@ docker compose up -d --build      # n8n :5678 · factbank-api :8000 · Postgres 
                                   # the API applies db/migrations/*.sql on startup
 docker compose exec factbank-api python scripts/import_v1.py   # once: V1 files -> Postgres
 ```
+
+Pipeline + notifications (step 5):
+
+```bash
+python scripts/n8n_install.py     # import + publish the workflows, restart n8n (runs the pipeline)
+powershell -ExecutionPolicy Bypass -File scripts\windows\install-notifier.ps1   # once: sign-in task
+```
+
+- **The pipeline runs every time n8n starts**, not at a fixed time: discover → score → record a
+  digest. With Docker Desktop set to start at sign-in, that is every PC startup. A manual
+  "Run now" trigger sits in the same workflow.
+- **The digest is local.** It's a row in `digests`, shown at http://localhost:8000/ and announced by
+  a Windows notification (`scripts/windows/notifier.ps1`, started at sign-in, checks every
+  2 min). A failed run is recorded by the error workflow and gets its own notification. If the
+  API can't be reached for ~6 min, the notifier says so.
+- **Per-source cap is per 24 h**, not per run, so restarts can't let one large board flood the inbox.
+- Digest writes are idempotent on the n8n execution they report (`source_execution`).
 
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.
@@ -97,7 +114,7 @@ Each step: I propose → you confirm → I build → I show it working → you v
 2. **Infrastructure.** `docker-compose.yml`: n8n, Postgres, factbank-api. `.env.example`. Personal data mounted, never baked into an image
 3. **Schema + migration.** SQL schema, plus a one-off import of the 190 jobs, 191 decisions and 14 applications
 4. **factbank-api v1.** `/discover`, `/score`, `/validate` returning JSON. Token auth, no shell strings
-5. **Daily workflow.** 07:00: discover → score → upsert into Postgres → "N new jobs" notification. ✅ *Milestone: runs daily without you*
+5. **Pipeline workflow.** On every startup: discover → score → upsert into Postgres → local digest + Windows notification. ✅ *Milestone: runs without you*
 
 ### Week 2: the full flow without a terminal
 6. **Review app: Inbox.** Job cards, Pursue/Skip → n8n webhook → decision stored
@@ -117,7 +134,8 @@ Each step: I propose → you confirm → I build → I show it working → you v
 
 - **A. Review UI:** custom small web app, served from the stack on localhost
 - **B. Python logic:** kept as the containerised `factbank-api`; n8n calls it over HTTP
-- **C. Phone access:** desktop only for now; notifications link to the localhost app. Revisit in week 3
+- **C. Phone access:** desktop only. **Notifications are local** (2026-11-05): the digest page plus Windows notifications. No email, no Telegram, nothing leaves the machine. Email and then Telegram were considered and dropped. Telegram stays a one-node option if phone notifications are wanted later
+- **E. Schedule:** the pipeline runs **on every n8n startup** instead of at 07:00 (2026-11-05). A PC left on for days gets no new run until the next restart; a periodic fallback can be added in step 12 if that matters
 - **D. LLM:** none for now. Everything runs deterministically; step 10 stays parked until a provider is chosen
 
 Environment found: Docker 29.6 + Compose installed (daemon currently **stopped**), Node 26,

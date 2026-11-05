@@ -36,6 +36,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # The pipeline runs when n8n starts, so n8n must not start before the API answers.
+      factbank-api:
+        condition: service_healthy
     environment:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres

@@ -1,0 +1,97 @@
+{
+  "id": "jeErrorAlerts001",
+  "name": "Job engine — error alerts",
+  "nodes": [
+    {
+      "id": "c2e1d7b3-0001-4b00-9000-000000000001",
+      "name": "On any job-engine failure",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c2e1d7b3-0002-4b00-9000-000000000002",
+      "name": "Build failed digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconst ex = e.execution || {};\nreturn [{ json: {\n  status: 'failed',\n  // keyed on the FAILED execution, so n8n re-firing a recovery cannot duplicate it\n  source_execution: `failed:${ex.id ?? $execution.id}`,\n  trigger: ex.mode || null,\n  workflow: e.workflow?.name || 'unknown workflow',\n  failed_node: ex.lastNodeExecuted || null,\n  error: String(ex.error?.message || e.trigger?.error?.message || 'no error message').slice(0, 4000),\n  execution_url: ex.url || null,\n} }];"
+      }
+    },
+    {
+      "id": "c2e1d7b3-0003-4b00-9000-000000000003",
+      "name": "Record failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "notes": "If the API itself is down this fails too; the desktop notifier then reports the API as unreachable.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTBANK_API_URL }}/digests",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FACTBANK_API_TOKEN }}"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "On any job-engine failure": {
+      "main": [
+        [
+          {
+            "node": "Build failed digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build failed digest": {
+      "main": [
+        [
+          {
+            "node": "Record failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "active": false,
+  "pinData": {}
+}

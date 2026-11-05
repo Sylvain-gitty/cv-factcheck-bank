@@ -1,0 +1,222 @@
+{
+  "id": "jeDailyDiscover1",
+  "name": "Job engine — pipeline on startup (Stages 1 + 2b)",
+  "nodes": [
+    {
+      "id": "b1f0c6a2-0001-4a00-9000-000000000001",
+      "name": "On n8n startup",
+      "type": "n8n-nodes-base.n8nTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Fires every time n8n starts: with Docker Desktop starting at sign-in, that is every PC startup.",
+      "parameters": {
+        "events": [
+          "init"
+        ]
+      }
+    },
+    {
+      "id": "b1f0c6a2-0006-4a00-9000-000000000006",
+      "name": "Run now (manual)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b1f0c6a2-0002-4a00-9000-000000000002",
+      "name": "Discover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        100
+      ],
+      "notes": "Stage 1. Retries 5x5s: right after boot the API may still be starting.",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTBANK_API_URL }}/discover",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FACTBANK_API_TOKEN }}"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"limit\": 60 }",
+        "options": {
+          "timeout": 600000
+        }
+      }
+    },
+    {
+      "id": "b1f0c6a2-0003-4a00-9000-000000000003",
+      "name": "Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        100
+      ],
+      "notes": "Stage 2b: new -> scored (the inbox).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTBANK_API_URL }}/score",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FACTBANK_API_TOKEN }}"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"top\": 10 }",
+        "options": {
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "b1f0c6a2-0004-4a00-9000-000000000004",
+      "name": "Build digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const d = $('Discover').first().json;\nconst s = $input.first().json;\nreturn [{ json: {\n  status: 'ok',\n  source_execution: `pipeline:${$execution.id}`,\n  trigger: $execution.mode,\n  new_count: s.newly_scored ?? 0,\n  inbox_size: s.inbox_size ?? null,\n  fetched: d.fetched ?? null,\n  sources_run: d.sources_run ?? null,\n  sources_failed: d.sources_failed || [],\n  top: s.top || [],\n  discover_run_id: d.run_id ?? null,\n  score_run_id: s.run_id ?? null,\n} }];"
+      }
+    },
+    {
+      "id": "b1f0c6a2-0005-4a00-9000-000000000005",
+      "name": "Record digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        100
+      ],
+      "notes": "Stored locally; the Windows notifier and the page at http://localhost:8000/ read it.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTBANK_API_URL }}/digests",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FACTBANK_API_TOKEN }}"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "On n8n startup": {
+      "main": [
+        [
+          {
+            "node": "Discover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now (manual)": {
+      "main": [
+        [
+          {
+            "node": "Discover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discover": {
+      "main": [
+        [
+          {
+            "node": "Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score": {
+      "main": [
+        [
+          {
+            "node": "Build digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build digest": {
+      "main": [
+        [
+          {
+            "node": "Record digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "errorWorkflow": "jeErrorAlerts001",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {}
+}
