@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–9, 11 and 12 done (branch `rebuild/n8n-engine`). Step 10 (LLM) parked.**
+**Status: built 2026-11-05. Steps 1–9 and 11–13 done (branch `rebuild/n8n-engine`, not pushed). Step 10 (LLM) parked. Open items at the end.**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -221,3 +221,39 @@ Each step: I propose → you confirm → I build → I show it working → you v
 
 Environment found: Docker 29.6 + Compose installed (daemon currently **stopped**), Node 26,
 Python 3.11. n8n not installed yet. No LLM key set in the environment.
+
+
+---
+
+## Open items (2026-11-05)
+
+**Needs you**
+- **Push and review the branch.** `rebuild/n8n-engine` exists only locally. Before pushing,
+  check whether `Sylvain-gitty/cv-factcheck-bank` is public: the archived V1 docs name real
+  people (project collaborators, and the owner of a repo that must not be claimed).
+- **Keep a copy of `.env`** outside the PC (see RUNBOOK → Backups), and copy `backups/`
+  elsewhere now and then.
+- **Record outcomes for the 7 September applications.** They count as "no reply" (21+ days, nothing recorded).
+- **Clear the queues:** 137 jobs in the inbox (72 from OpenAI's board), and 45 V1 jobs waiting in Review.
+- **Docker Desktop:** check "Start Docker Desktop when you sign in" is on.
+- **n8n:** the disabled "TEST deliberate failure" workflow can be deleted.
+
+**Parked by decision**
+- **Step 10, LLM steps** (re-rank of the top N, an optional letter middle) wait for a provider choice.
+  They would plug in as n8n nodes calling the API's existing candidates, and stay challengers:
+  generated text must still pass the same gates.
+
+**Known gaps**
+- **Dead boards:** Greenhouse `doctolib` and Personio `ecosia` return 404. Their tokens have
+  probably changed, so probe them again or disable them in `sources.yaml`.
+- **WeWorkRemotely** postings arrive without a company (it is embedded in the title,
+  "Company: Title"). A small parser fix in `discover.py`.
+- **Per-source cap:** 8 new jobs per source per 24 h holds big boards back on purpose. OpenAI
+  still has more postings queued, which trickle in over the next days.
+- **Letter length** (250–400 words) is a warning, as in V1, not a blocker.
+- **The CV preview** does not render inside Claude's built-in browser pane, which blocks frames;
+  "Open in new tab" covers it. It should work in Edge or Chrome.
+- **Silent if the PC stays on:** with only the startup trigger, nothing runs. The 12-hour trigger is
+  one key press away (see RUNBOOK).
+- **The outer `n8n-automations/` folder** is an empty git repo with no commits, left from before
+  the plans moved into `fact-bank/docs/`.
