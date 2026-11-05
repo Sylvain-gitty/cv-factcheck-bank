@@ -10,11 +10,19 @@ scoring, tailoring, letter gates, rendering) and, from step 6, serves the review
     GET  /validate    fact-bank integrity (validate.py)
     POST /digests     n8n records the result of a pipeline run (ok or failed)
     GET  /digests/latest · GET /digests/pending · POST /digests/notified
-    GET  /            the latest digest as a page (read-only, no token; see below)
+    GET  /            the review app (static page; talks to /ui/api/*)
+    GET  /digest      the latest digest as a plain page (no JavaScript needed)
+    /ui/api/*         the review app's JSON endpoints (inbox, decisions, undo, summary)
 
-The page at / is the one unauthenticated route besides /health. It is read-only (job
-titles, counts, run status) and the port is bound to 127.0.0.1. How the review app
-authenticates its write actions is decided in step 6.
+THE REVIEW APP HAS NO LOGIN, ON PURPOSE (step 6). Two threats were weighed:
+- Another program on this PC: it can read .env and the token anyway, so a login would
+  add friction without adding protection.
+- A web page open in your browser trying to reach localhost: that is the real one, and
+  it is blocked without a login. Every /, /digest and /ui request must carry a localhost
+  Host header (defeats DNS rebinding), and every /ui write must come from this app's own
+  Origin AND carry the X-Job-Engine header, which a foreign page cannot add without a
+  CORS grant this server never gives.
+The bearer-token API above (used by n8n) is unchanged.
 
 Security, carried over from bridge.py:
 - The container port is published on 127.0.0.1 only (docker-compose.yml).
@@ -33,17 +41,18 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import psycopg
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse
+import psycopg
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 FACTBANK = Path(os.environ.get("FACTBANK_DIR", Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo root
 
 import digests                        # noqa: E402
+import inbox                          # noqa: E402
 from discovery import run_discovery    # noqa: E402
 from migrate import migrate            # noqa: E402
 from scoring import run_scoring        # noqa: E402
@@ -212,7 +221,91 @@ def post_notified(body: NotifiedIn) -> dict:
     return {"marked": digests.mark_notified(DATABASE_URL, body.up_to_id)}
 
 
-@app.get("/", response_class=HTMLResponse)
-def home() -> str:
-    """The digest page the desktop notification opens. Read-only."""
+# --------------------------------------------------------------------------- review app
+
+STATIC = Path(__file__).resolve().parent / "static"
+APP_PORT = os.environ.get("APP_PORT", "8000")
+ALLOWED_HOSTS = {f"localhost:{APP_PORT}", f"127.0.0.1:{APP_PORT}"}
+ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
+UI_PREFIXES = ("/ui", "/digest", "/static")
+
+
+@app.middleware("http")
+async def browser_guard(request: Request, call_next):
+    """Localhost-only Host for the app; same-origin + custom header for its writes."""
+    path = request.url.path
+    if path == "/" or path.startswith(UI_PREFIXES):
+        if request.headers.get("host", "") not in ALLOWED_HOSTS:
+            return JSONResponse({"detail": "app is served on localhost only"}, status_code=421)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            if (request.headers.get("origin") not in ALLOWED_ORIGINS
+                    or request.headers.get("x-job-engine") != "1"):
+                return JSONResponse({"detail": "cross-origin write refused"}, status_code=403)
+    response = await call_next(request)
+    if path == "/" or path.startswith(UI_PREFIXES):
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+    return response
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    """The review app. The desktop notification opens this."""
+    return FileResponse(STATIC / "app.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/static/{name}", include_in_schema=False)
+def static(name: str):
+    if name not in {"app.js", "app.css"}:
+        raise HTTPException(status_code=404)
+    return FileResponse(STATIC / name, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/digest", response_class=HTMLResponse)
+def digest_page() -> str:
+    """The latest digest as a plain page, no JavaScript."""
     return digests.page(digests.latest(DATABASE_URL))
+
+
+@app.get("/ui/api/summary")
+def ui_summary() -> dict:
+    return {"digest": digests.latest(DATABASE_URL), **inbox.counts(DATABASE_URL)}
+
+
+@app.get("/ui/api/inbox")
+def ui_inbox(source: str | None = None, archetype: str | None = None, q: str | None = None,
+             limit: int = 200) -> dict:
+    if q is not None and len(q) > 200:
+        raise HTTPException(status_code=400, detail="search too long")
+    return inbox.list_inbox(DATABASE_URL, source, archetype, q or None, max(1, min(limit, 500)))
+
+
+@app.get("/ui/api/jobs/{job_id}")
+def ui_job(job_id: int) -> dict:
+    job = inbox.job_detail(DATABASE_URL, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="no such job")
+    return job
+
+
+class DecisionIn(BaseModel):
+    job_ids: list[int] = Field(..., min_length=1, max_length=500)
+    verdict: Literal["pursue", "skip"]
+
+
+@app.post("/ui/api/decisions")
+def ui_decide(body: DecisionIn) -> dict:
+    return inbox.decide(DATABASE_URL, body.job_ids, body.verdict)
+
+
+class UndoIn(BaseModel):
+    decision_ids: list[int] = Field(..., min_length=1, max_length=500)
+
+
+@app.post("/ui/api/decisions/undo")
+def ui_undo(body: UndoIn) -> dict:
+    return inbox.undo(DATABASE_URL, body.decision_ids)

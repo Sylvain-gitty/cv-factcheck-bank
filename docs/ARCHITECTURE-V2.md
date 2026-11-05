@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–5 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–6 done (branch `rebuild/n8n-engine`).**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -33,6 +33,14 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\install-notifier.ps1   
   API can't be reached for ~6 min, the notifier says so.
 - **Per-source cap is per 24 h**, not per run, so restarts can't let one large board flood the inbox.
 - Digest writes are idempotent on the n8n execution they report (`source_execution`).
+
+Review app (step 6): http://localhost:8000/, the inbox (Gate 1). Keys: `j`/`k` to move,
+`p` pursue, `s` skip, `x` select, `e` expand, `o` open the posting, `u` undo, `/` search.
+Filters by source, role profile and text; bulk skip of the selection or of everything shown,
+behind a confirm dialog. Decisions are written by the API directly (not via n8n) with the score
+snapshot. Undo marks the decision `undone_at`, so the table stays append-only. **No login:**
+app requests must carry a localhost Host header, and writes must come from the app's own origin
+with an `X-Job-Engine` header, which blocks other websites in your browser (see `api/main.py`).
 
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.
@@ -117,7 +125,7 @@ Each step: I propose → you confirm → I build → I show it working → you v
 5. **Pipeline workflow.** On every startup: discover → score → upsert into Postgres → local digest + Windows notification. ✅ *Milestone: runs without you*
 
 ### Week 2: the full flow without a terminal
-6. **Review app: Inbox.** Job cards, Pursue/Skip → n8n webhook → decision stored
+6. **Review app: Inbox.** Job cards, Pursue/Skip → API stores the decision (step 7 hands pursues to n8n)
 7. **Drafting workflow.** On pursue: tailor → letter draft → `ready_for_review`
 8. **Review app: Review screen.** CV + letter editor + live gates + Approve
 9. **Package + send.** On approve: package. *I sent it* button, then follow-up reminders. ✅ *Milestone: discovery to sent, all clicks*

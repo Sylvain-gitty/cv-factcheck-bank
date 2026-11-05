@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job engine</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Job engine</div>
+  <nav class="tabs" aria-label="Sections">
+    <a class="tab active" href="/" aria-current="page">Inbox <span id="tab-inbox-n" class="pill"></span></a>
+    <span class="tab soon" title="Step 8">Review</span>
+    <span class="tab soon" title="Step 9">Applications</span>
+  </nav>
+  <div id="summary" class="summary" aria-live="polite"></div>
+</header>
+
+<div id="run-banner" class="banner" hidden></div>
+
+<section class="toolbar" aria-label="Filters">
+  <input id="q" type="search" placeholder="Search title, company, description  ( / )" autocomplete="off">
+  <select id="source" aria-label="Source"><option value="">All sources</option></select>
+  <select id="archetype" aria-label="Role profile"><option value="">All profiles</option></select>
+  <span id="matching" class="muted"></span>
+  <span class="spacer"></span>
+  <button id="skip-selected" class="btn" disabled>Skip selected</button>
+  <button id="skip-shown" class="btn danger-outline">Skip all shown</button>
+</section>
+
+<main>
+  <ol id="list" class="list" aria-label="Jobs waiting for a decision"></ol>
+  <div id="empty" class="empty" hidden>
+    <div class="empty-title">Inbox zero</div>
+    <div class="muted">Nothing waiting for a decision. New jobs arrive on the next startup run.</div>
+  </div>
+  <div id="loading" class="muted center">Loading…</div>
+</main>
+
+<footer class="keys" aria-label="Keyboard shortcuts">
+  <span><kbd>j</kbd>/<kbd>k</kbd> move</span>
+  <span><kbd>p</kbd> pursue</span>
+  <span><kbd>s</kbd> skip</span>
+  <span><kbd>x</kbd> select</span>
+  <span><kbd>e</kbd> expand</span>
+  <span><kbd>o</kbd> open posting</span>
+  <span><kbd>u</kbd> undo</span>
+  <span><kbd>/</kbd> search</span>
+</footer>
+
+<div id="toast" class="toast" role="status" hidden>
+  <span id="toast-msg"></span>
+  <button id="toast-undo" class="btn small">Undo</button>
+</div>
+
+<dialog id="confirm">
+  <p id="confirm-msg"></p>
+  <div class="dialog-actions">
+    <button id="confirm-no" class="btn">Cancel</button>
+    <button id="confirm-yes" class="btn danger">Skip them</button>
+  </div>
+</dialog>
+</body>
+</html>
