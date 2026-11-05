@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import os
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
+
+from migrate import migrate
 
 FACTBANK = Path(os.environ.get("FACTBANK_DIR", Path(__file__).resolve().parent.parent))
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -27,7 +30,13 @@ API_TOKEN = os.environ["API_TOKEN"]
 BANK_FILES = ["profile.yaml", "entities.yaml", "facts.yaml", "vocab.yaml",
               "render_config.yaml", "sources.yaml", "answers.yaml"]
 
-app = FastAPI(title="factbank-api", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app):
+    migrate(DATABASE_URL)       # schema is always current after `docker compose up`
+    yield
+
+
+app = FastAPI(title="factbank-api", version="0.1.0", lifespan=lifespan)
 
 
 def require_token(authorization: str = Header(default="")) -> None:
