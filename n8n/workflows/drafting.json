@@ -1,0 +1,96 @@
+{
+  "id": "jeDraftingRun001",
+  "name": "Job engine — drafting (Stages 3 + 4)",
+  "nodes": [
+    {
+      "id": "e4a3f9d5-0001-4d00-9000-000000000001",
+      "name": "Pursue clicked",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "6b1d4f0e-5a7c-4e21-9c3d-2f8e7a1b9c40",
+      "notes": "factbank-api pings this right after you click Pursue. It only means 'there may be work'; the API decides what to draft, so a stray call is harmless.",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-engine/draft",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "e4a3f9d5-0002-4d00-9000-000000000002",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 160],
+      "notes": "Safety net: catches a missed ping and retries failed drafts (3 attempts max).",
+      "parameters": { "rule": { "interval": [ { "field": "minutes", "minutesInterval": 15 } ] } }
+    },
+    {
+      "id": "e4a3f9d5-0003-4d00-9000-000000000003",
+      "name": "On n8n startup",
+      "type": "n8n-nodes-base.n8nTrigger",
+      "typeVersion": 1,
+      "position": [0, 320],
+      "parameters": { "events": ["init"] }
+    },
+    {
+      "id": "e4a3f9d5-0004-4d00-9000-000000000004",
+      "name": "Run now (manual)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 480],
+      "parameters": {}
+    },
+    {
+      "id": "e4a3f9d5-0005-4d00-9000-000000000005",
+      "name": "Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 240],
+      "notes": "CV + letter draft for each pursued job: pursued -> ready_for_review. Returns {busy:true} if a run is already going (that run picks the work up).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FACTBANK_API_URL }}/draft",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "=Bearer {{ $env.FACTBANK_API_TOKEN }}" },
+          { "name": "Connection", "value": "close" }
+        ] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"max_jobs\": 10 }",
+        "options": { "timeout": 600000 }
+      }
+    },
+    {
+      "id": "e4a3f9d5-0006-4d00-9000-000000000006",
+      "name": "Fail loudly on draft errors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 240],
+      "notes": "Any failed draft fails the execution, so the error workflow records it and the desktop notifier shows it.",
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst failed = r.failed || [];\nif (failed.length) {\n  const what = failed.map(f => `${f.slug}: ${f.error}`).join('; ');\n  throw new Error(`${failed.length} draft(s) failed (${r.drafted.length} ok): ${what}`.slice(0, 1800));\n}\nreturn [{ json: { drafted: (r.drafted || []).length, remaining: r.remaining, busy: !!r.busy } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Pursue clicked": { "main": [ [ { "node": "Draft", "type": "main", "index": 0 } ] ] },
+    "Every 15 minutes": { "main": [ [ { "node": "Draft", "type": "main", "index": 0 } ] ] },
+    "On n8n startup": { "main": [ [ { "node": "Draft", "type": "main", "index": 0 } ] ] },
+    "Run now (manual)": { "main": [ [ { "node": "Draft", "type": "main", "index": 0 } ] ] },
+    "Draft": { "main": [ [ { "node": "Fail loudly on draft errors", "type": "main", "index": 0 } ] ] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "errorWorkflow": "jeErrorAlerts001",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {}
+}

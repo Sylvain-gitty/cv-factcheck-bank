@@ -1,6 +1,6 @@
 # V2 — Job search & application engine (proposal, 2026-11-05)
 
-**Status: design confirmed 2026-11-05. Steps 1–6 done (branch `rebuild/n8n-engine`).**
+**Status: design confirmed 2026-11-05. Steps 1–7 done (branch `rebuild/n8n-engine`).**
 
 API (step 4), all except `/health` need `Authorization: Bearer $API_TOKEN`:
 `POST /discover {limit?, sources?}` · `POST /score {top?}` · `GET /validate` · `GET /health`.
@@ -41,6 +41,19 @@ behind a confirm dialog. Decisions are written by the API directly (not via n8n)
 snapshot. Undo marks the decision `undone_at`, so the table stays append-only. **No login:**
 app requests must carry a localhost Host header, and writes must come from the app's own origin
 with an `X-Job-Engine` header, which blocks other websites in your browser (see `api/main.py`).
+
+Drafting (step 7): a Pursue click pings the n8n webhook `job-engine/draft`. The
+**drafting** workflow (also on startup, every 15 min as a safety net, and a manual "Run now")
+calls `POST /draft`, which runs V1's `tailor.py` + `letter.py` per job:
+`pursued → drafting → ready_for_review`, usually within ~2 s. Rules kept from V1:
+- the CV variant follows the score (`span` when two profiles are tied);
+- a letter whose opening you wrote is never touched;
+- an unwritten draft is rebuilt with the CV, and the old one goes to `letters/.superseded/`.
+
+Each attempt is a `documents` version with its check results. A failed draft returns the job to
+`pursued` with `draft_error`. It gets at most one attempt per run and 3 in total, and the failure
+reaches you as a failed digest (Windows notification). The webhook takes no input and
+only means "there may be work", so a stray call is harmless.
 
 Schema: `db/migrations/001_init.sql`. The V1 files are left untouched by the import, and it
 refuses to run twice unless given `--replace`.
@@ -126,7 +139,7 @@ Each step: I propose → you confirm → I build → I show it working → you v
 
 ### Week 2: the full flow without a terminal
 6. **Review app: Inbox.** Job cards, Pursue/Skip → API stores the decision (step 7 hands pursues to n8n)
-7. **Drafting workflow.** On pursue: tailor → letter draft → `ready_for_review`
+7. **Drafting workflow.** On pursue (webhook ping, within seconds): tailor → letter draft → `ready_for_review`
 8. **Review app: Review screen.** CV + letter editor + live gates + Approve
 9. **Package + send.** On approve: package. *I sent it* button, then follow-up reminders. ✅ *Milestone: discovery to sent, all clicks*
 

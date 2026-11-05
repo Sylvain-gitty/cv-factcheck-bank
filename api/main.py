@@ -7,6 +7,7 @@ scoring, tailoring, letter gates, rendering) and, from step 6, serves the review
     GET  /whoami      token check
     POST /discover    Stage 1: fetch, filter, dedupe, insert new jobs (state 'new')
     POST /score       Stage 2b: BM25 score everything waiting for Gate 1 ('new' -> 'scored')
+    POST /draft       Stages 3+4: CV + letter draft for pursued jobs ('pursued' -> 'ready_for_review')
     GET  /validate    fact-bank integrity (validate.py)
     POST /digests     n8n records the result of a pipeline run (ok or failed)
     GET  /digests/latest · GET /digests/pending · POST /digests/notified
@@ -38,6 +39,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -54,6 +56,7 @@ sys.path.insert(0, str(FACTBANK))      # the V1 stage modules live at the repo r
 import digests                        # noqa: E402
 import inbox                          # noqa: E402
 from discovery import run_discovery    # noqa: E402
+from drafting import run_drafting      # noqa: E402
 from migrate import migrate            # noqa: E402
 from scoring import run_scoring        # noqa: E402
 
@@ -138,6 +141,26 @@ class ScoreIn(BaseModel):
 def score(body: ScoreIn | None = None) -> dict:
     """Stage 2b over the whole corpus; stores scores for jobs waiting at Gate 1."""
     return exclusive(run_scoring, DATABASE_URL, FACTBANK, (body or ScoreIn()).top)
+
+
+class DraftIn(BaseModel):
+    max_jobs: int = Field(10, ge=1, le=50, description="jobs drafted per call")
+
+
+_draft_lock = threading.Lock()
+
+
+@app.post("/draft", dependencies=[Depends(require_token)])
+def draft(body: DraftIn | None = None) -> dict:
+    """Stages 3+4 for up to max_jobs pursued jobs. ~2-5 s per job."""
+    if not _draft_lock.acquire(blocking=False):
+        # Not an error: the run in progress claims jobs one at a time until none is left,
+        # so it will pick up whatever this call was asked to do.
+        return {"busy": True, "drafted": [], "failed": [], "remaining": None, "given_up": None}
+    try:
+        return run_drafting(DATABASE_URL, FACTBANK, (body or DraftIn()).max_jobs)
+    finally:
+        _draft_lock.release()
 
 
 @app.get("/validate", dependencies=[Depends(require_token)])
@@ -227,14 +250,21 @@ STATIC = Path(__file__).resolve().parent / "static"
 APP_PORT = os.environ.get("APP_PORT", "8000")
 ALLOWED_HOSTS = {f"localhost:{APP_PORT}", f"127.0.0.1:{APP_PORT}"}
 ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
-UI_PREFIXES = ("/ui", "/digest", "/static")
+# Exact paths and "/"-terminated prefixes only. A bare startswith("/digest") also matched
+# the bearer API's /digests, and refused every digest n8n tried to record (step 6 bug).
+UI_EXACT = {"/", "/digest"}
+UI_PREFIXES = ("/ui/", "/static/")
+
+
+def is_ui_path(path: str) -> bool:
+    return path in UI_EXACT or path.startswith(UI_PREFIXES)
 
 
 @app.middleware("http")
 async def browser_guard(request: Request, call_next):
     """Localhost-only Host for the app; same-origin + custom header for its writes."""
     path = request.url.path
-    if path == "/" or path.startswith(UI_PREFIXES):
+    if is_ui_path(path):
         if request.headers.get("host", "") not in ALLOWED_HOSTS:
             return JSONResponse({"detail": "app is served on localhost only"}, status_code=421)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -242,7 +272,7 @@ async def browser_guard(request: Request, call_next):
                     or request.headers.get("x-job-engine") != "1"):
                 return JSONResponse({"detail": "cross-origin write refused"}, status_code=403)
     response = await call_next(request)
-    if path == "/" or path.startswith(UI_PREFIXES):
+    if is_ui_path(path):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -297,9 +327,28 @@ class DecisionIn(BaseModel):
     verdict: Literal["pursue", "skip"]
 
 
+N8N_WEBHOOK_BASE = os.environ.get("N8N_WEBHOOK_BASE", "http://n8n:5678/webhook")
+
+
+def _ping_drafting() -> None:
+    """Tell n8n there is drafting to do. Fire-and-forget: if n8n is down or slow, the
+    drafting workflow's own schedule picks the job up later, so nothing is lost."""
+    def go():
+        try:
+            req = urllib.request.Request(f"{N8N_WEBHOOK_BASE}/job-engine/draft", data=b"{}",
+                                         method="POST", headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5).close()
+        except Exception as e:  # noqa: BLE001 -- logged, never raised into the UI
+            print(f"drafting ping failed (schedule will catch up): {type(e).__name__}: {e}")
+    threading.Thread(target=go, daemon=True).start()
+
+
 @app.post("/ui/api/decisions")
 def ui_decide(body: DecisionIn) -> dict:
-    return inbox.decide(DATABASE_URL, body.job_ids, body.verdict)
+    res = inbox.decide(DATABASE_URL, body.job_ids, body.verdict)
+    if body.verdict == "pursue" and res["decided"]:
+        _ping_drafting()
+    return res
 
 
 class UndoIn(BaseModel):
